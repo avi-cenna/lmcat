@@ -3,12 +3,22 @@
 set windows-shell := ["nu", "-c"]
 
 fmt:
- go fmt .
+  go fmt .
+  golines . -w
 
 update:
   go get -u
   go mod tidy -v
 
+build:
+  go build
+
 install:
   go build
-  cp lmcat.exe ~/bin/
+  cp lmcat ~/bin/
+
+run: build
+  ./lmcat
+
+stats: build
+  ./lmcat --stats
