@@ -1,100 +1,21 @@
 package main
 
 import (
-	"bufio"
 	"fmt"
-	"github.com/h2non/filetype"
-	"github.com/h2non/filetype/matchers"
 	_ "github.com/h2non/filetype/matchers"
+	"github.com/jedib0t/go-pretty/v6/table"
 	"github.com/pkoukk/tiktoken-go"
 	"github.com/urfave/cli"
 	"log"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 )
 
 var (
 	tke *tiktoken.Tiktoken
 )
-
-func runStats(cliCtx *cli.Context) error {
-	// Get current working directory
-	cwd, err := os.Getwd()
-	if err != nil {
-		return fmt.Errorf("error getting current working directory: %w", err)
-	}
-	fmt.Println("Current working directory:", cwd)
-
-	// Initialize a map to store counts
-	counts := make(map[string]int)
-
-	// Create output file
-	outputFile, err := os.Create("F:/output.txt")
-	if err != nil {
-		return fmt.Errorf("error creating output file: %w", err)
-	}
-	defer outputFile.Close()
-
-	writer := bufio.NewWriter(outputFile)
-	defer writer.Flush()
-
-	// Walk through the directory
-	files, err := getRipgrepFiles(cliCtx.String("regex"), cliCtx.String("glob"))
-	foo := filetype.GetType("F:/output.txt")
-	bar := matchers.Application
-	if err != nil {
-		return fmt.Errorf("error getting files: %w", err)
-	}
-
-	for _, f := range files {
-		fmt.Println("Visiting file:", f)
-		// Get the file extension
-		ext := strings.ToLower(filepath.Ext(f))
-		if ext != "" {
-			counts[ext]++
-		}
-		if ext == ".htm" || true {
-			err := appendFileContent(f, writer)
-			if err != nil {
-				log.Printf("Error appending file %s: %v", f, err)
-			}
-		}
-	}
-
-	// Print the results
-	for ext, count := range counts {
-		fmt.Printf("%s: %d\n", ext, count)
-	}
-
-	fmt.Println("Text files have been concatenated into output.txt")
-
-	// Count tokens in the output file
-	tokenCount, err := countTokens("F:/output.txt")
-	if err != nil {
-		return fmt.Errorf("error counting tokens: %w", err)
-	}
-
-	fmt.Printf("Total tokens in output file: %d\n", tokenCount)
-
-	if tokenCount > 1000 {
-		log.Printf("WARNING: Token count (%d) exceeds 1000\n", tokenCount)
-	}
-
-	return nil
-}
-
-func countTokens2(filePath string) (int, error) {
-	content, err := os.ReadFile(filePath)
-	if err != nil {
-		// print log warning
-		log.Println("Error reading file:", err)
-		return 0, err
-	}
-
-	tokens := tke.Encode(string(content), nil, nil)
-	return len(tokens), nil
-}
 
 func init() {
 	encoding := "cl100k_base"
@@ -103,4 +24,70 @@ func init() {
 	if err != nil {
 		log.Fatal(err)
 	}
+}
+
+func RunStats(cliCtx *cli.Context) error {
+	// Get current working directory
+	cwd, err := os.Getwd()
+	if err != nil {
+		return fmt.Errorf("error getting current working directory: %w", err)
+	}
+	fmt.Println("Current working directory:", cwd)
+
+	// Initialize a map to store extCounts
+	extCounts := make(map[string]int)
+	extTokens := make(map[string]int)
+
+	files, err := FindFiles(cliCtx.String("glob"), cliCtx.String("regex"))
+	if err != nil {
+		return fmt.Errorf("error getting files: %w", err)
+	}
+
+	for _, f := range files {
+		tokenCount, err := CountTokensFilePath(f)
+		if err != nil {
+			log.Printf("Error counting extTokens in file %s: %v", f, err)
+		}
+
+		ext := strings.ToLower(filepath.Ext(f))
+		if ext != "" {
+			extCounts[ext]++
+			extTokens[ext] += tokenCount
+		} else {
+			extCounts[filepath.Base(f)]++
+			extTokens[filepath.Base(f)] += tokenCount
+		}
+	}
+
+	printCountsAndTokens(extCounts, extTokens)
+	return nil
+}
+
+func CountTokensFilePath(filePath string) (int, error) {
+	content, err := ReadFile(filePath)
+	if err != nil {
+		return 0, err
+	}
+	return CountTokensInText(content)
+}
+
+func CountTokensInText(text []byte) (int, error) {
+	tokens := tke.Encode(string(text), nil, nil)
+	return len(tokens), nil
+}
+
+func printCountsAndTokens(extCounts map[string]int, extTokens map[string]int) {
+	sortedKeys := make([]string, 0, len(extCounts))
+	for ext := range extCounts {
+		sortedKeys = append(sortedKeys, ext)
+	}
+	sort.Strings(sortedKeys)
+
+	t := table.NewWriter()
+	t.SetOutputMirror(os.Stdout)
+	t.AppendHeader(table.Row{"Extension", "Count", "Tokens"})
+	for _, ext := range sortedKeys {
+		t.AppendRow(table.Row{ext, extCounts[ext], extTokens[ext]})
+	}
+	t.Render()
 }

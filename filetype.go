@@ -6,10 +6,10 @@ import (
 	"strings"
 )
 
-func IsLikelyNonTextFile(filepath string) bool {
+func IsLikelyTextFile(filepath string) bool {
 	ext := path.Ext(filepath)
 	ext, _ = strings.CutPrefix(ext, ".")
-	return nonTextFileExtensions.Contains(ext)
+	return !nonTextFileExtensions.Contains(ext)
 }
 
 var nonTextFileExtensions mapset.Set[string]

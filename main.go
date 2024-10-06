@@ -12,17 +12,18 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 
 	md "github.com/JohannesKaufmann/html-to-markdown"
 )
-
-var converter = md.NewConverter("", true, nil)
 
 func main() {
 	app := &cli.App{
 		Name:  "lmcat",
 		Usage: "Process and concatenate files",
 		Flags: []cli.Flag{
+			// TODO (AA): add a flag here that will force sequential running
+			//            of stats and concatenation commands
 			&cli.StringFlag{
 				Name:     "glob",
 				Required: false,
@@ -34,6 +35,11 @@ func main() {
 				Required: false,
 				Usage:    "Regex pattern for ripgrep",
 			},
+			&cli.BoolFlag{
+				Name:     "stats",
+				Required: false,
+				Usage:    "Run file stats",
+			},
 		},
 		Action: run,
 	}
@@ -44,6 +50,11 @@ func main() {
 }
 
 func run(cliCtx *cli.Context) error {
+	if cliCtx.Bool("stats") {
+		return RunStats(cliCtx)
+	}
+	return RunConcat(cliCtx)
+
 	// Get current working directory
 	cwd, err := os.Getwd()
 	if err != nil {
@@ -54,14 +65,22 @@ func run(cliCtx *cli.Context) error {
 	// Initialize a map to store counts
 	counts := make(map[string]int)
 
-	// Create output file
-	outputFile, err := os.Create("F:/output.txt")
+	// Create output file ~/Downloads/output_{timestamp}.txt
+	// paths combine
+	outfileName := filepath.Join(
+		HomeDir(),
+		"Downloads",
+		fmt.Sprintf("output_%d.txt", time.Now().Unix()),
+	)
+	outfile, err := os.Create(outfileName)
+
+	//outfile, err := os.Create("~/Downloads/" + fmt.Sprintf("output_%d.txt", time.Now().Unix()))
 	if err != nil {
 		return fmt.Errorf("error creating output file: %w", err)
 	}
-	defer outputFile.Close()
+	defer outfile.Close()
 
-	writer := bufio.NewWriter(outputFile)
+	writer := bufio.NewWriter(outfile)
 	defer writer.Flush()
 
 	// Walk through the directory
@@ -93,7 +112,7 @@ func run(cliCtx *cli.Context) error {
 	fmt.Println("Text files have been concatenated into output.txt")
 
 	// Count tokens in the output file
-	tokenCount, err := countTokens("F:/output.txt")
+	tokenCount, err := countTokens(outfileName)
 	if err != nil {
 		return fmt.Errorf("error counting tokens: %w", err)
 	}

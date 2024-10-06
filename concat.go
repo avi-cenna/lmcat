@@ -3,30 +3,18 @@ package main
 import (
 	"fmt"
 	_ "github.com/h2non/filetype/matchers"
-	"github.com/jedib0t/go-pretty/v6/table"
-	"github.com/pkoukk/tiktoken-go"
 	"github.com/urfave/cli"
 	"log"
 	"os"
-	"path/filepath"
-	"sort"
 	"strings"
+	"sync"
 )
 
-var (
-	tke *tiktoken.Tiktoken
-)
+// TODO (AA): refactor as necessary to be in more idiomatic Go
+// TODO (AA): refactor so that there is one variant that is using goroutines,
+//            and one that is run sequentially
 
-func init() {
-	encoding := "cl100k_base"
-	var err error
-	tke, err = tiktoken.GetEncoding(encoding)
-	if err != nil {
-		log.Fatal(err)
-	}
-}
-
-func RunStats(cliCtx *cli.Context) error {
+func RunConcat(cliCtx *cli.Context) error {
 	// Get current working directory
 	cwd, err := os.Getwd()
 	if err != nil {
@@ -34,57 +22,48 @@ func RunStats(cliCtx *cli.Context) error {
 	}
 	fmt.Println("Current working directory:", cwd)
 
-	// Initialize a map to store extCounts
-	extCounts := make(map[string]int)
-	extTokens := make(map[string]int)
+	var totalTokens int
 
 	files, err := FindFiles(cliCtx.String("glob"), cliCtx.String("regex"))
 	if err != nil {
 		return fmt.Errorf("error getting files: %w", err)
 	}
 
+	var wg sync.WaitGroup
+	var mu sync.Mutex
+
 	for _, f := range files {
-		tokenCount, err := CountTokens(f)
-		if err != nil {
-			log.Printf("Error counting extTokens in file %s: %v", f, err)
-		}
 
-		ext := strings.ToLower(filepath.Ext(f))
-		if ext != "" {
-			extCounts[ext]++
-			extTokens[ext] += tokenCount
-		} else {
-			extCounts[filepath.Base(f)]++
-			extTokens[filepath.Base(f)] += tokenCount
-		}
+		go func() {
+			wg.Add(1)
+			defer wg.Done()
+
+			byteArr, err := ReadFile(f)
+			if err != nil {
+				log.Fatalln("Error reading file:", err)
+			}
+
+			tokenCount, err := CountTokensInText(byteArr)
+			if err != nil {
+				log.Printf("Error counting extTokens in file %s: %v", f, err)
+			}
+
+			mu.Lock()
+			totalTokens += tokenCount
+			mu.Unlock()
+
+			mu.Lock()
+			fmt.Println("// BEGIN FILE:", f)
+			fmt.Println(strings.TrimSpace(string(byteArr)))
+			fmt.Println("// END FILE:", f)
+			fmt.Println()
+			mu.Unlock()
+		}()
 	}
 
-	printCountsAndTokens(extCounts, extTokens)
+	wg.Wait()
+	log.Println("Total tokens:", totalTokens)
+	log.Println("Total files:", len(files))
+
 	return nil
-}
-
-func CountTokens(filePath string) (int, error) {
-	content, err := os.ReadFile(filePath)
-	if err != nil {
-		log.Println("Error reading file:", err)
-		return 0, err
-	}
-	tokens := tke.Encode(string(content), nil, nil)
-	return len(tokens), nil
-}
-
-func printCountsAndTokens(extCounts map[string]int, extTokens map[string]int) {
-	sortedKeys := make([]string, 0, len(extCounts))
-	for ext := range extCounts {
-		sortedKeys = append(sortedKeys, ext)
-	}
-	sort.Strings(sortedKeys)
-
-	t := table.NewWriter()
-	t.SetOutputMirror(os.Stdout)
-	t.AppendHeader(table.Row{"Extension", "Count", "Tokens"})
-	for _, ext := range sortedKeys {
-		t.AppendRow(table.Row{ext, extCounts[ext], extTokens[ext]})
-	}
-	t.Render()
 }
