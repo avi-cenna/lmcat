@@ -38,18 +38,11 @@ func (tc *TokenCounter) CountTokensFilePath(filePath string) (int, error) {
 	return tc.CountTokensInText(content)
 }
 
-// TODO: adjust this so that it accepts a pointer to the Codec tokenizer instead of creating it each time.
-func CountTokensInText(text []byte) (int, error) {
-	enc, err := tokenizer.Get(tokenizer.Cl100kBase)
+func (tc *TokenCounter) CountTokensInText(text []byte) (int, error) {
+	ids, _, err := tc.encoder.Encode(string(text))
 	if err != nil {
 		return 0, err
 	}
-
-	ids, _, err := enc.Encode(string(text))
-	if err != nil {
-		return 0, err
-	}
-
 	return len(ids), nil
 }
 
