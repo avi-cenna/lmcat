@@ -3,6 +3,7 @@ package main
 import (
 	_ "github.com/h2non/filetype/matchers"
 	"github.com/jedib0t/go-pretty/v6/table"
+	"github.com/tiktoken-go/tokenizer"
 	"github.com/urfave/cli"
 	_ "log"
 	"os"
@@ -16,16 +17,27 @@ func RunStats(cliCtx *cli.Context) error {
 	return nil
 }
 
-//func CountTokensFilePath(filePath string) (int, error) {
-//	content, err := ReadFile(filePath)
-//	if err != nil {
-//		return 0, err
-//	}
-//	return CountTokensInText(content)
-//}
+func CountTokensFilePath(filePath string) (int, error) {
+	content, err := ReadFile(filePath)
+	if err != nil {
+		return 0, err
+	}
+	return CountTokensInText(content)
+}
 
-//TODO: flesh this out, paying attention to the example in examples.md
-//func CountTokensInText(...)
+func CountTokensInText(text []byte) (int, error) {
+	enc, err := tokenizer.Get(tokenizer.Cl100kBase)
+	if err != nil {
+		return 0, err
+	}
+
+	ids, _, err := enc.Encode(string(text))
+	if err != nil {
+		return 0, err
+	}
+
+	return len(ids), nil
+}
 
 func printCountsAndTokens(extCounts map[string]int, extTokens map[string]int) {
 	sortedKeys := make([]string, 0, len(extCounts))
