@@ -4,17 +4,14 @@ import (
 	"bufio"
 	"bytes"
 	"fmt"
+	md "github.com/JohannesKaufmann/html-to-markdown"
 	"github.com/pkoukk/tiktoken-go"
 	"github.com/urfave/cli"
 	"io"
 	"log"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"strings"
-	"time"
-
-	md "github.com/JohannesKaufmann/html-to-markdown"
 )
 
 func main() {
@@ -40,6 +37,11 @@ func main() {
 				Required: false,
 				Usage:    "Run file stats",
 			},
+			&cli.BoolFlag{
+				Name:     "gcw",
+				Required: false,
+				Usage:    "Gocodewalker",
+			},
 		},
 		Action: run,
 	}
@@ -54,76 +56,6 @@ func run(cliCtx *cli.Context) error {
 		return RunStats(cliCtx)
 	}
 	return RunConcat(cliCtx)
-
-	// Get current working directory
-	cwd, err := os.Getwd()
-	if err != nil {
-		return fmt.Errorf("error getting current working directory: %w", err)
-	}
-	fmt.Println("Current working directory:", cwd)
-
-	// Initialize a map to store counts
-	counts := make(map[string]int)
-
-	// Create output file ~/Downloads/output_{timestamp}.txt
-	// paths combine
-	outfileName := filepath.Join(
-		HomeDir(),
-		"Downloads",
-		fmt.Sprintf("output_%d.txt", time.Now().Unix()),
-	)
-	outfile, err := os.Create(outfileName)
-
-	//outfile, err := os.Create("~/Downloads/" + fmt.Sprintf("output_%d.txt", time.Now().Unix()))
-	if err != nil {
-		return fmt.Errorf("error creating output file: %w", err)
-	}
-	defer outfile.Close()
-
-	writer := bufio.NewWriter(outfile)
-	defer writer.Flush()
-
-	// Walk through the directory
-	files, err := getRipgrepFiles(cliCtx.String("regex"), cliCtx.String("glob"))
-	if err != nil {
-		return fmt.Errorf("error getting files: %w", err)
-	}
-
-	for _, f := range files {
-		fmt.Println("Visiting file:", f)
-		// Get the file extension
-		ext := strings.ToLower(filepath.Ext(f))
-		if ext != "" {
-			counts[ext]++
-		}
-		if ext == ".htm" || true {
-			err := appendFileContent(f, writer)
-			if err != nil {
-				log.Printf("Error appending file %s: %v", f, err)
-			}
-		}
-	}
-
-	// Print the results
-	for ext, count := range counts {
-		fmt.Printf("%s: %d\n", ext, count)
-	}
-
-	fmt.Println("Text files have been concatenated into output.txt")
-
-	// Count tokens in the output file
-	tokenCount, err := countTokens(outfileName)
-	if err != nil {
-		return fmt.Errorf("error counting tokens: %w", err)
-	}
-
-	fmt.Printf("Total tokens in output file: %d\n", tokenCount)
-
-	if tokenCount > 1000 {
-		log.Printf("WARNING: Token count (%d) exceeds 1000\n", tokenCount)
-	}
-
-	return nil
 }
 
 func getRipgrepFiles(regex, glob string) ([]string, error) {

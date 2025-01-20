@@ -6,8 +6,9 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
-	"sort"
+	_ "sort"
 	"strings"
+	"sync"
 
 	_ "github.com/h2non/filetype/matchers"
 	"github.com/jedib0t/go-pretty/v6/table"
@@ -161,8 +162,8 @@ func printCountsAndTokens(extCounts map[string]int, extTokens map[string]int) {
 	t.Render()
 }
 
-///
-func extensionOrBase(filePath String) string {
+// /
+func extensionOrBase(filePath string) string {
 	ext := strings.ToLower(filepath.Ext(filePath))
 	if ext != "" {
 		return ext
