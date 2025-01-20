@@ -25,6 +25,7 @@ func CountTokensFilePath(filePath string) (int, error) {
 	return CountTokensInText(content)
 }
 
+// TODO: adjust this so that it accepts a pointer to the Codec tokenizer instead of creating it each time.
 func CountTokensInText(text []byte) (int, error) {
 	enc, err := tokenizer.Get(tokenizer.Cl100kBase)
 	if err != nil {
