@@ -54,6 +54,9 @@ func main() {
 func run(cliCtx *cli.Context) error {
 	if cliCtx.Bool("stats") {
 		return RunStats(cliCtx)
+	} else if cliCtx.Bool("gcw") {
+		main2()
+		return nil
 	}
 	return RunConcat(cliCtx)
 }
