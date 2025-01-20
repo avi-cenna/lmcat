@@ -6,6 +6,7 @@ import (
 	"github.com/tiktoken-go/tokenizer"
 	"github.com/urfave/cli"
 	_ "log"
+	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
@@ -13,16 +14,28 @@ import (
 	"strings"
 )
 
+type TokenCounter struct {
+	encoder *tokenizer.Codec
+}
+
+func NewTokenCounter() (*TokenCounter, error) {
+	enc, err := tokenizer.Get(tokenizer.Cl100kBase)
+	if err != nil {
+		return nil, fmt.Errorf("failed to initialize tokenizer: %w", err)
+	}
+	return &TokenCounter{encoder: enc}, nil
+}
+
 func RunStats(cliCtx *cli.Context) error {
 	return nil
 }
 
-func CountTokensFilePath(filePath string) (int, error) {
+func (tc *TokenCounter) CountTokensFilePath(filePath string) (int, error) {
 	content, err := ReadFile(filePath)
 	if err != nil {
 		return 0, err
 	}
-	return CountTokensInText(content)
+	return tc.CountTokensInText(content)
 }
 
 // TODO: adjust this so that it accepts a pointer to the Codec tokenizer instead of creating it each time.
