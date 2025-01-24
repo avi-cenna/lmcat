@@ -1,12 +1,16 @@
 package main
 
 import (
-	_ "github.com/h2non/filetype/matchers"
+	"fmt"
+	"github.com/boyter/gocodewalker"
+	"log"
+	"sync"
+
+	//_ "github.com/h2non/filetype/matchers"
 	"github.com/jedib0t/go-pretty/v6/table"
 	"github.com/tiktoken-go/tokenizer"
 	"github.com/urfave/cli"
 	_ "log"
-	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
@@ -14,32 +18,91 @@ import (
 	"strings"
 )
 
-type TokenCounter struct {
-	encoder *tokenizer.Codec
-}
+//type TokenCounter struct {
+//	encoder *tokenizer.Codec
+//}
 
-func NewTokenCounter() (*TokenCounter, error) {
-	enc, err := tokenizer.Get(tokenizer.Cl100kBase)
-	if err != nil {
-		return nil, fmt.Errorf("failed to initialize tokenizer: %w", err)
-	}
-	return &TokenCounter{encoder: enc}, nil
+//func NewTokenCounter() (*TokenCounter, error) {
+//	enc, err := tokenizer.Get(tokenizer.Cl100kBase)
+//	if err != nil {
+//		return nil, fmt.Errorf("failed to initialize tokenizer: %w", err)
+//	}
+//	return &TokenCounter{encoder: enc}, nil
+//}
+
+type FileResult struct {
+	// Full path to the file
+	Location string
+	// File contents
+	Content []byte
+	// Count of tokens in the file
+	TokenCount int
 }
 
 func RunStats(cliCtx *cli.Context) error {
+	enc, err := tokenizer.Get(tokenizer.Cl100kBase)
+	if err != nil {
+		return err
+	}
+
+	fileQueue := WalkFiles()
+	resultQueue := make(chan *FileResult, 100)
+	fmt.Println(resultQueue)
+
+	extCounts := make(map[string]int)
+	extTokens := make(map[string]int)
+	for f := range fileQueue {
+
+		fmt.Println(f.Location)
+		fileBytes, err := os.ReadFile(f.Location)
+		if err != nil {
+			log.Println("Error reading file:", err)
+		}
+		tokenCount, err := CountTokensInText(enc, fileBytes)
+		if err != nil {
+			log.Printf("Error counting tokens in file %s: %v", f.Location, err)
+		}
+		ext := extensionOrBase(f.Location)
+		extCounts[ext]++
+		extTokens[ext] += tokenCount
+	}
+
+	printCountsAndTokens(extCounts, extTokens)
+
 	return nil
 }
 
-func (tc *TokenCounter) CountTokensFilePath(filePath string) (int, error) {
-	content, err := ReadFile(filePath)
-	if err != nil {
-		return 0, err
+func processFiles(
+	fileQueue chan *gocodewalker.File,
+	resultQueue chan *FileResult,
+	codec tokenizer.Codec) {
+	wg := sync.WaitGroup{}
+	for f := range fileQueue {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			fileBytes, err := os.ReadFile(f.Location)
+			if err != nil {
+				log.Println("Error reading file:", err)
+				return
+			}
+			tokenCount, err := CountTokensInText(codec, fileBytes)
+			if err != nil {
+				log.Printf("Error counting tokens in file %s: %v", f.Location, err)
+				return
+			}
+			resultQueue <- &FileResult{Location: f.Location, Content: fileBytes, TokenCount: tokenCount}
+		}()
 	}
-	return tc.CountTokensInText(content)
+	wg.Wait()
+	close(resultQueue)
 }
 
-func (tc *TokenCounter) CountTokensInText(text []byte) (int, error) {
-	ids, _, err := tc.encoder.Encode(string(text))
+// ..
+// Note: tokenizer.Codec is an interface type
+
+func CountTokensInText(codec tokenizer.Codec, text []byte) (int, error) {
+	ids, _, err := codec.Encode(string(text))
 	if err != nil {
 		return 0, err
 	}

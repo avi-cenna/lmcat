@@ -2,7 +2,8 @@ package main
 
 import (
 	"fmt"
-	_ "github.com/h2non/filetype/matchers"
+	//_ "github.com/h2non/filetype/matchers"
+	"github.com/tiktoken-go/tokenizer"
 	"github.com/urfave/cli"
 	"log"
 	"os"
@@ -29,6 +30,11 @@ func RunConcat(cliCtx *cli.Context) error {
 		return fmt.Errorf("error getting files: %w", err)
 	}
 
+	enc, err := tokenizer.Get(tokenizer.Cl100kBase)
+	if err != nil {
+		return err
+	}
+
 	var wg sync.WaitGroup
 	var mu sync.Mutex
 
@@ -43,7 +49,7 @@ func RunConcat(cliCtx *cli.Context) error {
 				log.Fatalln("Error reading file:", err)
 			}
 
-			tokenCount, err := CountTokensInText(byteArr)
+			tokenCount, err := CountTokensInText(enc, byteArr)
 			if err != nil {
 				log.Printf("Error counting extTokens in file %s: %v", f, err)
 			}

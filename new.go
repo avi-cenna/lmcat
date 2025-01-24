@@ -7,6 +7,13 @@ import (
 
 func main2() {
 	fmt.Println("using Gocodewalker!")
+	fileListQueue := WalkFiles()
+	for f := range fileListQueue {
+		fmt.Println(f.Location, "::", f.Filename)
+	}
+}
+
+func WalkFiles() chan *gocodewalker.File {
 	fileListQueue := make(chan *gocodewalker.File, 100)
 
 	fileWalker := gocodewalker.NewFileWalker(".", fileListQueue)
@@ -14,6 +21,8 @@ func main2() {
 	// restrict to only process files that have the .go extension
 	//fileWalker.AllowListExtensions = append(fileWalker.AllowListExtensions, "go")
 	fileWalker.ExcludeListExtensions = append(fileWalker.ExcludeListExtensions, "mod", "sum")
+	//fileWalker.ExcludeFilenameRegex = append(fileWalker.ExcludeFilenameRegex, regexp.MustCompile("LICENSE"))
+	fileWalker.ExcludeFilename = append(fileWalker.ExcludeFilename, "LICENSE")
 
 	// handle the errors by printing them out and then ignore
 	errorHandler := func(e error) bool {
@@ -29,7 +38,5 @@ func main2() {
 		}
 	}()
 
-	for f := range fileListQueue {
-		fmt.Println(f.Location)
-	}
+	return fileListQueue
 }

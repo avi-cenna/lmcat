@@ -22,3 +22,8 @@ run: build
 
 stats: build
   ./lmcat --stats
+
+demo:
+  go build -ldflags "-s -w"
+  ./lmcat --gcw
+  hyperfine './lmcat --gcw'
