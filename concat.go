@@ -23,21 +23,21 @@ func RunConcat(command *cli.Command) error {
 	done := make(chan struct{})
 
 	go func() {
-		//extCounts := make(map[string]int)
-		//extTokens := make(map[string]int)
-		//TODO: alter this so that for each file it does the following:
-		//   - print BEGIN FILE: <filename>, to stdout
-		//   - print the file content, to stdout
-		//   - print END FILE: <filename>, to stdout
-		//   - print a newline, to stdout
-		//   - At the end, print the total number of tokens and # files scanned, make sure it's printed to stderr
+		totalTokens := 0
+		fileCount := 0
+		
 		for f := range resultQueue {
-			ext := extensionOrBase(f.Location)
-			fmt.Println("ext:", ext, f.Location)
-			//extCounts[ext]++
-			//extTokens[ext] += f.TokenCount
+			fmt.Printf("// BEGIN FILE: %s\n", f.Location)
+			fmt.Println(strings.TrimSpace(string(f.Content)))
+			fmt.Printf("// END FILE: %s\n", f.Location)
+			fmt.Println()
+			
+			totalTokens += f.TokenCount
+			fileCount++
 		}
-		//printCountsAndTokens(extCounts, extTokens)
+		
+		fmt.Fprintf(os.Stderr, "Total tokens: %d\n", totalTokens)
+		fmt.Fprintf(os.Stderr, "Total files: %d\n", fileCount)
 		close(done)
 	}()
 
