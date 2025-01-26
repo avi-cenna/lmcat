@@ -2,9 +2,10 @@ package main
 
 import (
 	"fmt"
+	"github.com/boyter/gocodewalker"
+	"github.com/rs/zerolog/log"
 	"github.com/tiktoken-go/tokenizer"
 	"github.com/urfave/cli/v3"
-	"log"
 	"os"
 	"strings"
 	"sync"
@@ -17,30 +18,68 @@ type ConcatFileResult struct {
 }
 
 func RunConcat(command *cli.Command) error {
-	enc, err := tokenizer.Get(tokenizer.Cl100kBase)
-	if err != nil {
-		return err
-	}
-
 	fileQueue := WalkFiles(100)
-	resultQueue := make(chan *StatsFileResult, 100)
+	resultQueue := make(chan *ConcatFileResult, 100)
 	done := make(chan struct{})
 
 	go func() {
-		extCounts := make(map[string]int)
-		extTokens := make(map[string]int)
+		//extCounts := make(map[string]int)
+		//extTokens := make(map[string]int)
+		//TODO: alter this so that for each file it does the following:
+		//   - print BEGIN FILE: <filename>, to stdout
+		//   - print the file content, to stdout
+		//   - print END FILE: <filename>, to stdout
+		//   - print a newline, to stdout
+		//   - At the end, print the total number of tokens and # files scanned, make sure it's printed to stderr
 		for f := range resultQueue {
 			ext := extensionOrBase(f.Location)
-			extCounts[ext]++
-			extTokens[ext] += f.TokenCount
+			fmt.Println("ext:", ext, f.Location)
+			//extCounts[ext]++
+			//extTokens[ext] += f.TokenCount
 		}
-		printCountsAndTokens(extCounts, extTokens)
+		//printCountsAndTokens(extCounts, extTokens)
 		close(done)
 	}()
 
-	processFiles(fileQueue, resultQueue, enc)
+	processFilesConcat(fileQueue, resultQueue)
 	<-done
 	return nil
+}
+
+func processFilesConcat(
+	fileQueue chan *gocodewalker.File,
+	resultQueue chan *ConcatFileResult) {
+
+	wg := sync.WaitGroup{}
+	for f := range fileQueue {
+
+		wg.Add(1)
+		go func(f *gocodewalker.File) {
+			log.Debug().Str("file", f.Location).Msg("Processing file")
+			defer wg.Done()
+			if !IsLikelyTextFile(f.Location) {
+				return
+			}
+			fileBytes, err := os.ReadFile(f.Location)
+			if err != nil {
+				log.Err(err).Str("file", f.Location).Msg("Error reading file")
+				return
+			}
+			tokenCount, err := tokenCounter.CountTokens(fileBytes)
+			log.Debug().Str("file", f.Location).Int("tokenCount", tokenCount).Msg("Counted tokens")
+			if err != nil {
+				log.Err(err).Str("file", f.Location).Msg("Error counting tokens")
+				return
+			}
+			resultQueue <- &ConcatFileResult{
+				Location:   f.Location,
+				Content:    fileBytes,
+				TokenCount: tokenCount}
+		}(f)
+	}
+
+	wg.Wait()
+	close(resultQueue)
 }
 
 // TODO (AA): refactor as necessary to be in more idiomatic Go
@@ -75,7 +114,7 @@ func RunConcatOld(command *cli.Command) error {
 
 			byteArr, err := ReadFile(f)
 			if err != nil {
-				log.Fatalln("Error reading file:", err)
+				log.Fatal().Err(err).Msg("Error reading file")
 			}
 
 			tokenCount, err := CountTokensInText(enc, byteArr)
@@ -97,8 +136,13 @@ func RunConcatOld(command *cli.Command) error {
 	}
 
 	wg.Wait()
-	log.Println("Total tokens:", totalTokens)
-	log.Println("Total files:", len(files))
+
+	// error print ln here
+	_, err = fmt.Fprintln(os.Stderr, "Total tokens:", totalTokens)
+	_, err = fmt.Fprintln(os.Stderr, "Total files:", len(files))
+	if err != nil {
+		return err
+	}
 
 	return nil
 }
