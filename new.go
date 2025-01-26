@@ -7,14 +7,14 @@ import (
 
 func main2() {
 	fmt.Println("using Gocodewalker!")
-	fileListQueue := WalkFiles()
+	fileListQueue := WalkFiles(100)
 	for f := range fileListQueue {
 		fmt.Println(f.Location, "::", f.Filename)
 	}
 }
 
-func WalkFiles() chan *gocodewalker.File {
-	fileListQueue := make(chan *gocodewalker.File, 100)
+func WalkFiles(bufSize int) chan *gocodewalker.File {
+	fileListQueue := make(chan *gocodewalker.File, bufSize)
 
 	fileWalker := gocodewalker.NewFileWalker(".", fileListQueue)
 

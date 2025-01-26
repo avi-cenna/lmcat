@@ -1,13 +1,17 @@
 package main
 
 import (
-	"github.com/urfave/cli"
-	"log"
+	"context"
+	"github.com/rs/zerolog"
+	"github.com/rs/zerolog/log"
+	//"github.com/urfave/cli"
+	"github.com/urfave/cli/v3"
+
 	"os"
 )
 
 func main() {
-	app := &cli.App{
+	app := &cli.Command{
 		Name:  "lmcat",
 		Usage: "Process and concatenate files",
 		Flags: []cli.Flag{
@@ -34,23 +38,43 @@ func main() {
 				Required: false,
 				Usage:    "Gocodewalker",
 			},
+			&cli.BoolFlag{
+				Name:     "debug",
+				Aliases:  []string{"d", "verbose", "v"},
+				Required: false,
+				Usage:    "Enable debug logging",
+			},
+			&cli.BoolFlag{
+				Name:     "approx",
+				Required: false,
+				Usage:    "Use approximate token count",
+			},
 		},
 		Action: run,
 	}
 
-	if err := app.Run(os.Args); err != nil {
-		log.Fatal(err)
+	if err := app.Run(context.Background(), os.Args); err != nil {
+		log.Fatal().Err(err).Msg("Error running app")
 	}
 }
 
-func run(cliCtx *cli.Context) error {
+func run(ctx context.Context, cliCtx *cli.Command) error {
+	var globalLevel zerolog.Level
+	if cliCtx.Bool("debug") {
+		globalLevel = zerolog.DebugLevel
+	} else {
+		globalLevel = zerolog.InfoLevel
+	}
+	zerolog.SetGlobalLevel(globalLevel)
+	//initTokenizer(cliCtx.Bool("approx"))
+
 	if cliCtx.Bool("stats") {
 		return RunStats(cliCtx)
 	} else if cliCtx.Bool("gcw") {
 		main2()
 		return nil
 	}
-	return RunConcat(cliCtx)
+	return RunConcatOld(cliCtx)
 }
 
 //func getRipgrepFiles(regex, glob string) ([]string, error) {

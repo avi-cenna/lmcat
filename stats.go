@@ -1,107 +1,87 @@
 package main
 
 import (
-	"fmt"
 	"github.com/boyter/gocodewalker"
-	"log"
+	"github.com/rs/zerolog/log"
 	"sync"
 
-	//_ "github.com/h2non/filetype/matchers"
 	"github.com/jedib0t/go-pretty/v6/table"
-	"github.com/tiktoken-go/tokenizer"
-	"github.com/urfave/cli"
-	_ "log"
+	tiktoken "github.com/tiktoken-go/tokenizer"
+	"github.com/urfave/cli/v3"
 	"os"
 	"path/filepath"
 	"slices"
-	_ "sort"
 	"strings"
 )
 
-//type TokenCounter struct {
-//	encoder *tokenizer.Codec
-//}
-
-//func NewTokenCounter() (*TokenCounter, error) {
-//	enc, err := tokenizer.Get(tokenizer.Cl100kBase)
-//	if err != nil {
-//		return nil, fmt.Errorf("failed to initialize tokenizer: %w", err)
-//	}
-//	return &TokenCounter{encoder: enc}, nil
-//}
-
-type FileResult struct {
-	// Full path to the file
+type StatsFileResult struct {
 	Location string
-	// File contents
-	Content []byte
-	// Count of tokens in the file
+	//Content    []byte
 	TokenCount int
 }
 
-func RunStats(cliCtx *cli.Context) error {
-	enc, err := tokenizer.Get(tokenizer.Cl100kBase)
+func RunStats(command *cli.Command) error {
+	enc, err := tiktoken.Get(tiktoken.Cl100kBase)
 	if err != nil {
 		return err
 	}
 
-	fileQueue := WalkFiles()
-	resultQueue := make(chan *FileResult, 100)
-	fmt.Println(resultQueue)
+	fileQueue := WalkFiles(100)
+	resultQueue := make(chan *StatsFileResult, 100)
+	done := make(chan struct{})
 
-	extCounts := make(map[string]int)
-	extTokens := make(map[string]int)
-	for f := range fileQueue {
-
-		fmt.Println(f.Location)
-		fileBytes, err := os.ReadFile(f.Location)
-		if err != nil {
-			log.Println("Error reading file:", err)
+	go func() {
+		extCounts := make(map[string]int)
+		extTokens := make(map[string]int)
+		for f := range resultQueue {
+			ext := extensionOrBase(f.Location)
+			extCounts[ext]++
+			extTokens[ext] += f.TokenCount
 		}
-		tokenCount, err := CountTokensInText(enc, fileBytes)
-		if err != nil {
-			log.Printf("Error counting tokens in file %s: %v", f.Location, err)
-		}
-		ext := extensionOrBase(f.Location)
-		extCounts[ext]++
-		extTokens[ext] += tokenCount
-	}
+		printCountsAndTokens(extCounts, extTokens)
+		close(done)
+	}()
 
-	printCountsAndTokens(extCounts, extTokens)
-
+	processFiles(fileQueue, resultQueue, enc)
+	<-done
 	return nil
 }
 
 func processFiles(
 	fileQueue chan *gocodewalker.File,
-	resultQueue chan *FileResult,
-	codec tokenizer.Codec) {
+	resultQueue chan *StatsFileResult,
+	codec tiktoken.Codec) {
+
 	wg := sync.WaitGroup{}
 	for f := range fileQueue {
+
 		wg.Add(1)
-		go func() {
+		go func(f *gocodewalker.File) {
+			log.Debug().Str("file", f.Location).Msg("Processing file")
 			defer wg.Done()
+			if !IsLikelyTextFile(f.Location) {
+				return
+			}
 			fileBytes, err := os.ReadFile(f.Location)
 			if err != nil {
-				log.Println("Error reading file:", err)
+				log.Err(err).Str("file", f.Location).Msg("Error reading file")
 				return
 			}
 			tokenCount, err := CountTokensInText(codec, fileBytes)
+			log.Debug().Str("file", f.Location).Int("tokenCount", tokenCount).Msg("Counted tokens")
 			if err != nil {
-				log.Printf("Error counting tokens in file %s: %v", f.Location, err)
+				log.Err(err).Str("file", f.Location).Msg("Error counting tokens")
 				return
 			}
-			resultQueue <- &FileResult{Location: f.Location, Content: fileBytes, TokenCount: tokenCount}
-		}()
+			resultQueue <- &StatsFileResult{Location: f.Location, TokenCount: tokenCount}
+		}(f)
 	}
+
 	wg.Wait()
 	close(resultQueue)
 }
 
-// ..
-// Note: tokenizer.Codec is an interface type
-
-func CountTokensInText(codec tokenizer.Codec, text []byte) (int, error) {
+func CountTokensInText(codec tiktoken.Codec, text []byte) (int, error) {
 	ids, _, err := codec.Encode(string(text))
 	if err != nil {
 		return 0, err
