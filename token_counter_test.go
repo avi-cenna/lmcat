@@ -16,7 +16,24 @@ func TestApproxTokenCounter_CountTokens(t *testing.T) {
 		want    int
 		wantErr bool
 	}{
-		// TODO: Add test cases.
+		{
+			name: "empty string",
+			args: args{bytes: []byte("")},
+			want: 0,
+			wantErr: false,
+		},
+		{
+			name: "4 character string",
+			args: args{bytes: []byte("test")},
+			want: 1,
+			wantErr: false,
+		},
+		{
+			name: "8 character string",
+			args: args{bytes: []byte("testtest")},
+			want: 2,
+			wantErr: false,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -40,25 +57,39 @@ func TestGetTokenFunc(t *testing.T) {
 		inputString string
 		want        int
 	}{
-		//TODO: fix these test cases, do two with approx=true and two with approx=false
 		{
-			name: "Returns approximate token function",
-			args: args{
-				useApproximate: true,
-			},
-			want: ApproximateTokenFunction, // Replace with actual function reference
+			name:        "approximate short text",
+			approx:      true,
+			inputString: "Hello world",
+			want:        2, // 11 chars / 4 = 2 tokens approx
 		},
 		{
-			name: "Returns precise token function",
-			args: args{
-				useApproximate: false,
-			},
-			want: PreciseTokenFunction, // Replace with actual function reference
+			name:        "approximate longer text",
+			approx:      true,
+			inputString: "This is a longer piece of text for testing",
+			want:        10, // 40 chars / 4 = 10 tokens approx
+		},
+		{
+			name:        "precise short text",
+			approx:      false,
+			inputString: "Hello world",
+			want:        2, // actual GPT tokens
+		},
+		{
+			name:        "precise longer text",
+			approx:      false,
+			inputString: "This is a longer piece of text for testing",
+			want:        9, // actual GPT tokens
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := GetTokenFunc(tt.args.useApproximate); !reflect.DeepEqual(got, tt.want) {
+			countFunc := GetTokenFunc(tt.approx)
+			got, err := countFunc([]byte(tt.inputString))
+			if err != nil {
+				t.Errorf("GetTokenFunc() returned error: %v", err)
+			}
+			if got != tt.want {
 				t.Errorf("GetTokenFunc() = %v, want %v", got, tt.want)
 			}
 		})
@@ -78,7 +109,39 @@ func TestGptTokenCounter_CountTokens(t1 *testing.T) {
 		want    int
 		wantErr bool
 	}{
-		// TODO: Add test cases.
+		{
+			name: "empty string",
+			fields: fields{
+				codec: tokenizer.NewCLIP(),
+			},
+			args: args{
+				bytes: []byte(""),
+			},
+			want:    0,
+			wantErr: false,
+		},
+		{
+			name: "simple text",
+			fields: fields{
+				codec: tokenizer.NewCLIP(),
+			},
+			args: args{
+				bytes: []byte("Hello world"),
+			},
+			want:    2,
+			wantErr: false,
+		},
+		{
+			name: "longer text",
+			fields: fields{
+				codec: tokenizer.NewCLIP(),
+			},
+			args: args{
+				bytes: []byte("This is a longer piece of text for testing"),
+			},
+			want:    9,
+			wantErr: false,
+		},
 	}
 	for _, tt := range tests {
 		t1.Run(tt.name, func(t1 *testing.T) {
