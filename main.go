@@ -18,13 +18,12 @@ func main() {
 			// TODO (AA): add a flag here that will force sequential running
 			//            of stats and concatenation commands
 			&cli.StringFlag{
-				Name:     "glob",
+				Name:     "regex-content",
 				Required: false,
-				//Aliases: []string{"g"},
-				Usage: "Glob pattern for ripgrep",
+				Usage:    "Regex pattern for ripgrep",
 			},
 			&cli.StringFlag{
-				Name:     "regex",
+				Name:     "regex-filepath",
 				Required: false,
 				Usage:    "Regex pattern for ripgrep",
 			},
@@ -34,20 +33,15 @@ func main() {
 				Usage:    "Run file stats",
 			},
 			&cli.BoolFlag{
-				Name:     "gcw",
+				Name:     "approx",
 				Required: false,
-				Usage:    "Gocodewalker",
+				Usage:    "Use approximate token count",
 			},
 			&cli.BoolFlag{
 				Name:     "debug",
 				Aliases:  []string{"d", "verbose", "v"},
 				Required: false,
 				Usage:    "Enable debug logging",
-			},
-			&cli.BoolFlag{
-				Name:     "approx",
-				Required: false,
-				Usage:    "Use approximate token count",
 			},
 		},
 		Action: run,
@@ -60,21 +54,22 @@ func main() {
 
 func run(ctx context.Context, cliCtx *cli.Command) error {
 	var globalLevel zerolog.Level
-	if cliCtx.Bool("debug") {
+	//TODO: if something is being piped in, then we need to simply print out the content and then return
+
+	hiArgs := ConvertToHiArgs(cliCtx)
+	if hiArgs.debug {
 		globalLevel = zerolog.DebugLevel
 	} else {
 		globalLevel = zerolog.InfoLevel
 	}
 	zerolog.SetGlobalLevel(globalLevel)
-	//initTokenizer(cliCtx.Bool("approx"))
 
 	if cliCtx.Bool("stats") {
-		return RunStats(cliCtx)
+		return RunStats(hiArgs)
 	} else if cliCtx.Bool("gcw") {
-		main2()
 		return nil
 	}
-	return RunConcatOld(cliCtx)
+	return RunConcat(cliCtx)
 }
 
 //func getRipgrepFiles(regex, glob string) ([]string, error) {
