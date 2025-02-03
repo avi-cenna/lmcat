@@ -6,7 +6,7 @@ import (
 	"github.com/rs/zerolog/log"
 	//"github.com/urfave/cli"
 	"github.com/urfave/cli/v3"
-
+	"io"
 	"os"
 )
 
@@ -54,8 +54,16 @@ func main() {
 
 func run(ctx context.Context, cliCtx *cli.Command) error {
 	var globalLevel zerolog.Level
-	//TODO #21: if something is being piped into this cli command,
-	//  then we need to simply print out the content and then return
+
+	// Check if there's data being piped in
+	stat, _ := os.Stdin.Stat()
+	if (stat.Mode() & os.ModeCharDevice) == 0 {
+		// Data is being piped in
+		if _, err := io.Copy(os.Stdout, os.Stdin); err != nil {
+			return err
+		}
+		return nil
+	}
 
 	hiArgs := ConvertToHiArgs(cliCtx)
 	if hiArgs.debug {
