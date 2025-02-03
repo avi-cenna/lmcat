@@ -15,11 +15,8 @@ func main() {
 		Name:  "lmcat",
 		Usage: "Process and concatenate files",
 		Flags: []cli.Flag{
-			&cli.BoolFlag{
-				Name:     "sequential",
-				Required: false,
-				Usage:    "Run stats and concatenation sequentially",
-			},
+			// TODO (AA) #51: add a flag here that will force sequential running
+			//            of stats and concatenation commands
 			&cli.StringFlag{
 				Name:     "regex-content",
 				Required: false,
@@ -57,7 +54,8 @@ func main() {
 
 func run(ctx context.Context, cliCtx *cli.Command) error {
 	var globalLevel zerolog.Level
-	//TODO: if something is being piped in, then we need to simply print out the content and then return
+	//TODO #21: if something is being piped into this cli command,
+	//  then we need to simply print out the content and then return
 
 	hiArgs := ConvertToHiArgs(cliCtx)
 	if hiArgs.debug {
@@ -67,12 +65,7 @@ func run(ctx context.Context, cliCtx *cli.Command) error {
 	}
 	zerolog.SetGlobalLevel(globalLevel)
 
-	if cliCtx.Bool("sequential") && cliCtx.Bool("stats") {
-		if err := RunStats(hiArgs); err != nil {
-			return err
-		}
-		return RunConcat(cliCtx)
-	} else if cliCtx.Bool("stats") {
+	if cliCtx.Bool("stats") {
 		return RunStats(hiArgs)
 	} else if cliCtx.Bool("gcw") {
 		return nil
