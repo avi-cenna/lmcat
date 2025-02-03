@@ -6,6 +6,9 @@ fmt:
   go fmt .
   golines . -w
 
+lint:
+  golangci-lint run
+
 update:
   go get -u
   go mod tidy -v

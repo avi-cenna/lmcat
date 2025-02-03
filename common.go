@@ -77,20 +77,6 @@ func ConvertToHiArgs(command *cli.Command) *HiArgs {
 	return hiArgs
 }
 
-func filepathMatches(f *gocodewalker.File, regex *regexp.Regexp) bool {
-	if regex == nil {
-		return true
-	}
-	return regex.MatchString(f.Location)
-}
-
-func fileContentMatches(fc []byte, regex *regexp.Regexp) bool {
-	if regex == nil {
-		return true
-	}
-	return regex.MatchString(string(fc))
-}
-
 func countLines(text string) int {
 	n := strings.Count(text, "\n")
 	if len(text) > 0 && !strings.HasSuffix(text, "\n") {
