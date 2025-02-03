@@ -1,4 +1,4 @@
-package main
+package internal
 
 import (
 	"github.com/rs/zerolog/log"
@@ -7,21 +7,21 @@ import (
 )
 
 var (
-	tokenCounter TokenCounter
-	once         sync.Once
+	GlobalTokenCounter TokenCounter
+	once               sync.Once
 )
 
 type TokenCounter interface {
 	CountTokens(bytes []byte) (int, error)
 }
-type ApproximateTokenCounter struct {
+type ApproxTokenCounter struct {
 }
 
 type GptTokenCounter struct {
 	codec tokenizer.Codec
 }
 
-func (a ApproximateTokenCounter) CountTokens(bytes []byte) (int, error) {
+func (a ApproxTokenCounter) CountTokens(bytes []byte) (int, error) {
 	return len(string(bytes)) / 4, nil
 }
 
@@ -33,16 +33,16 @@ func (t GptTokenCounter) CountTokens(bytes []byte) (int, error) {
 	return len(ids), nil
 }
 
-func initTokenizer(useApproximate bool) {
+func InitTokenizer(useApproximate bool) {
 	once.Do(func() {
 		if useApproximate {
-			tokenCounter = ApproximateTokenCounter{}
+			GlobalTokenCounter = ApproxTokenCounter{}
 		} else {
 			codec, err := tokenizer.Get(tokenizer.Cl100kBase)
 			if err != nil {
 				log.Fatal().Err(err).Msg("Error getting tokenizer")
 			}
-			tokenCounter = GptTokenCounter{codec}
+			GlobalTokenCounter = GptTokenCounter{codec}
 		}
 	})
 }

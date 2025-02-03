@@ -2,9 +2,9 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
-	//"github.com/urfave/cli"
 	"github.com/urfave/cli/v3"
 	"io"
 	"os"
@@ -54,23 +54,6 @@ func main() {
 
 func run(ctx context.Context, cliCtx *cli.Command) error {
 	var globalLevel zerolog.Level
-
-	// Check if there's data being piped in
-	stat, _ := os.Stdin.Stat()
-	if (stat.Mode() & os.ModeCharDevice) == 0 {
-		// Data is being piped in
-		data, err := io.ReadAll(os.Stdin)
-		if err != nil {
-			return err
-		}
-		
-		countTokens := GetTokenFunc(cliCtx.Bool("approx"))
-		tokenCount := countTokens(data)
-		
-		_, err = fmt.Fprintf(os.Stdout, "Token count: %d\n", tokenCount)
-		return err
-	}
-
 	hiArgs := ConvertToHiArgs(cliCtx)
 	if hiArgs.debug {
 		globalLevel = zerolog.DebugLevel
@@ -79,25 +62,22 @@ func run(ctx context.Context, cliCtx *cli.Command) error {
 	}
 	zerolog.SetGlobalLevel(globalLevel)
 
+	// Check if there's data being piped in
+	stat, _ := os.Stdin.Stat()
+	if (stat.Mode() & os.ModeCharDevice) == 0 {
+		data, err := io.ReadAll(os.Stdin)
+		if err != nil {
+			return err
+		}
+		lineCount := countLines(string(data))
+		tokenCount := GetTokenFunc(hiArgs.approx)(data)
+		_, err = fmt.Fprintf(os.Stdout, "Lines: %d\nTokens: %d", lineCount, tokenCount)
+		return err
+	}
+
 	if cliCtx.Bool("stats") {
 		return RunStats(hiArgs)
-	} else if cliCtx.Bool("gcw") {
-		return nil
+	} else {
+		return RunConcat(cliCtx)
 	}
-	return RunConcat(cliCtx)
 }
-
-//func getRipgrepFiles(regex, glob string) ([]string, error) {
-//	fmt.Println("glob pattern:", glob)
-//	args := []string{"--files-with-matches", regex}
-//	if glob != "" {
-//		args = append(args, "--glob", glob)
-//	}
-//	cmd := exec.Command("rg", args...)
-//	output, err := cmd.Output()
-//	if err != nil {
-//		return nil, fmt.Errorf("error running ripgrep: %w", err)
-//	}
-//	files := strings.Split(strings.TrimSpace(string(output)), "\n")
-//	return files, nil
-//}
