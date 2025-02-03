@@ -59,10 +59,16 @@ func run(ctx context.Context, cliCtx *cli.Command) error {
 	stat, _ := os.Stdin.Stat()
 	if (stat.Mode() & os.ModeCharDevice) == 0 {
 		// Data is being piped in
-		if _, err := io.Copy(os.Stdout, os.Stdin); err != nil {
+		data, err := io.ReadAll(os.Stdin)
+		if err != nil {
 			return err
 		}
-		return nil
+		
+		countTokens := GetTokenFunc(cliCtx.Bool("approx"))
+		tokenCount := countTokens(data)
+		
+		_, err = fmt.Fprintf(os.Stdout, "Token count: %d\n", tokenCount)
+		return err
 	}
 
 	hiArgs := ConvertToHiArgs(cliCtx)
