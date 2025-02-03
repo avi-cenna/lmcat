@@ -1,17 +1,18 @@
 package main
 
 import (
-	"github.com/boyter/gocodewalker"
-	"github.com/rs/zerolog/log"
 	"sync"
 
-	"github.com/jedib0t/go-pretty/v6/table"
-	tiktoken "github.com/tiktoken-go/tokenizer"
-	"github.com/urfave/cli/v3"
+	"github.com/boyter/gocodewalker"
+	"github.com/rs/zerolog/log"
+
 	"os"
 	"path/filepath"
 	"slices"
 	"strings"
+
+	"github.com/jedib0t/go-pretty/v6/table"
+	"github.com/tiktoken-go/tokenizer"
 )
 
 type StatsFileResult struct {
@@ -20,12 +21,9 @@ type StatsFileResult struct {
 	TokenCount int
 }
 
-func RunStats(command *cli.Command) error {
-	enc, err := tiktoken.Get(tiktoken.Cl100kBase)
-	if err != nil {
-		return err
-	}
+func RunStats(command *HiArgs) error {
 
+	countTokens := GetTokenFunc(command.approx)
 	fileQueue := WalkFiles(100)
 	resultQueue := make(chan *StatsFileResult, 100)
 	done := make(chan struct{})
@@ -42,15 +40,26 @@ func RunStats(command *cli.Command) error {
 		close(done)
 	}()
 
-	processFiles(fileQueue, resultQueue, enc)
+	processFiles(command, fileQueue, resultQueue, countTokens)
 	<-done
 	return nil
 }
 
 func processFiles(
+	command *HiArgs,
 	fileQueue chan *gocodewalker.File,
 	resultQueue chan *StatsFileResult,
-	codec tiktoken.Codec) {
+	countTokens TokenFunc) {
+
+	//var regexFilepath *regexp.Regexp
+	//if r := command.String("regex-filepath"); r != "" {
+	//	regexFilepath = regexp.MustCompile(r)
+	//}
+
+	//var regexContent *regexp.Regexp
+	//if r := command.String("regex-content"); r != "" {
+	//	regexContent = regexp.MustCompile(r)
+	//}
 
 	wg := sync.WaitGroup{}
 	for f := range fileQueue {
@@ -62,17 +71,19 @@ func processFiles(
 			if !IsLikelyTextFile(f.Location) {
 				return
 			}
+			if command.regexFilepath != nil && !command.regexFilepath.MatchString(f.Location) {
+				return
+			}
 			fileBytes, err := os.ReadFile(f.Location)
 			if err != nil {
 				log.Err(err).Str("file", f.Location).Msg("Error reading file")
 				return
 			}
-			tokenCount, err := CountTokensInText(codec, fileBytes)
-			log.Debug().Str("file", f.Location).Int("tokenCount", tokenCount).Msg("Counted tokens")
-			if err != nil {
-				log.Err(err).Str("file", f.Location).Msg("Error counting tokens")
+			if command.regexContent != nil && !command.regexContent.Match(fileBytes) {
 				return
 			}
+			tokenCount := countTokens(fileBytes)
+			log.Debug().Str("file", f.Location).Int("tokenCount", tokenCount).Msg("Counted tokens")
 			resultQueue <- &StatsFileResult{Location: f.Location, TokenCount: tokenCount}
 		}(f)
 	}
@@ -81,7 +92,7 @@ func processFiles(
 	close(resultQueue)
 }
 
-func CountTokensInText(codec tiktoken.Codec, text []byte) (int, error) {
+func CountTokensInText(codec tokenizer.Codec, text []byte) (int, error) {
 	ids, _, err := codec.Encode(string(text))
 	if err != nil {
 		return 0, err
