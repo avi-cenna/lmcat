@@ -21,7 +21,7 @@ func ReadFile(filePath string) ([]byte, error) {
 }
 
 // WalkFiles walks the files in a directory recursively
-func WalkFiles(dir string) ([]string, error) {
+func WalkFilesOld(dir string) ([]string, error) {
 	var files []string
 	err := filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
