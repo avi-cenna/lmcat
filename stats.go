@@ -1,117 +1,103 @@
 package main
 
 import (
-	"fmt"
-	_ "github.com/h2non/filetype/matchers"
-	"github.com/jedib0t/go-pretty/v6/table"
-	"github.com/pkoukk/tiktoken-go"
-	"github.com/urfave/cli/v3"
-	"log"
+	"sync"
+
+	"github.com/boyter/gocodewalker"
+	"github.com/rs/zerolog/log"
+
 	"os"
 	"path/filepath"
 	"slices"
 	"strings"
-	"sync"
+
+	"github.com/jedib0t/go-pretty/v6/table"
+	"github.com/tiktoken-go/tokenizer"
 )
 
-var (
-	tke *tiktoken.Tiktoken
-)
-
-func init() {
-	encoding := "cl100k_base"
-	var err error
-	tke, err = tiktoken.GetEncoding(encoding)
-	if err != nil {
-		log.Fatal(err)
-	}
+type StatsFileResult struct {
+	Location string
+	//Content    []byte
+	TokenCount int
 }
 
-// TODO (AA): refactor as necessary to be in more idiomatic Go, and DRY
+func RunStats(command *HiArgs) error {
 
-func RunStats(cliCtx *cli.Command) error {
-	// Get current working directory
-	cwd, err := os.Getwd()
-	if err != nil {
-		return fmt.Errorf("error getting current working directory: %w", err)
-	}
-	fmt.Println("Current working directory:", cwd)
+	countTokens := GetTokenFunc(command.approx)
+	fileQueue := WalkFiles(100)
+	resultQueue := make(chan *StatsFileResult, 100)
+	done := make(chan struct{})
 
-	extCounts := make(map[string]int)
-	extTokens := make(map[string]int)
-
-	files, err := FindFiles(cliCtx.String("glob"), cliCtx.String("regex"))
-	if err != nil {
-		return fmt.Errorf("error getting files: %w", err)
-	}
-
-	var wg sync.WaitGroup
-	var mu sync.Mutex
-
-	for _, f := range files {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			tokenCount, err := countTokensFilePath(f)
-			if err != nil {
-				log.Printf("Error counting extTokens in file %s: %v", f, err)
-			}
-
-			ext := extensionOrBase(f)
-			mu.Lock()
+	go func() {
+		extCounts := make(map[string]int)
+		extTokens := make(map[string]int)
+		for f := range resultQueue {
+			ext := extensionOrBase(f.Location)
 			extCounts[ext]++
-			extTokens[ext] += tokenCount
-			mu.Unlock()
-		}()
-	}
-	wg.Wait()
-
-	printCountsAndTokens(extCounts, extTokens)
-	return nil
-}
-
-func RunStatsSequential(cliCtx *cli.Command) error {
-	// Get current working directory
-	cwd, err := os.Getwd()
-	if err != nil {
-		return fmt.Errorf("error getting current working directory: %w", err)
-	}
-	fmt.Println("Current working directory:", cwd)
-
-	extCounts := make(map[string]int)
-	extTokens := make(map[string]int)
-
-	files, err := FindFiles(cliCtx.String("glob"), cliCtx.String("regex"))
-	if err != nil {
-		return fmt.Errorf("error getting files: %w", err)
-	}
-
-	for _, f := range files {
-		tokenCount, err := countTokensFilePath(f)
-		if err != nil {
-			log.Printf("Error counting extTokens in file %s: %v", f, err)
+			extTokens[ext] += f.TokenCount
 		}
+		printCountsAndTokens(extCounts, extTokens)
+		close(done)
+	}()
 
-		ext := extensionOrBase(f)
-		extCounts[ext]++
-		extTokens[ext] += tokenCount
-	}
-
-	printCountsAndTokens(extCounts, extTokens)
+	processFiles(command, fileQueue, resultQueue, countTokens)
+	<-done
 	return nil
 }
 
-func countTokensFilePath(filePath string) (int, error) {
-	content, err := ReadFile(filePath)
+func processFiles(
+	command *HiArgs,
+	fileQueue chan *gocodewalker.File,
+	resultQueue chan *StatsFileResult,
+	countTokens TokenFunc) {
+
+	//var regexFilepath *regexp.Regexp
+	//if r := command.String("regex-filepath"); r != "" {
+	//	regexFilepath = regexp.MustCompile(r)
+	//}
+
+	//var regexContent *regexp.Regexp
+	//if r := command.String("regex-content"); r != "" {
+	//	regexContent = regexp.MustCompile(r)
+	//}
+
+	wg := sync.WaitGroup{}
+	for f := range fileQueue {
+
+		wg.Add(1)
+		go func(f *gocodewalker.File) {
+			log.Debug().Str("file", f.Location).Msg("Processing file")
+			defer wg.Done()
+			if !IsLikelyTextFile(f.Location) {
+				return
+			}
+			if command.regexFilepath != nil && !command.regexFilepath.MatchString(f.Location) {
+				return
+			}
+			fileBytes, err := os.ReadFile(f.Location)
+			if err != nil {
+				log.Err(err).Str("file", f.Location).Msg("Error reading file")
+				return
+			}
+			if command.regexContent != nil && !command.regexContent.Match(fileBytes) {
+				return
+			}
+			tokenCount := countTokens(fileBytes)
+			log.Debug().Str("file", f.Location).Int("tokenCount", tokenCount).Msg("Counted tokens")
+			resultQueue <- &StatsFileResult{Location: f.Location, TokenCount: tokenCount}
+		}(f)
+	}
+
+	wg.Wait()
+	close(resultQueue)
+}
+
+func CountTokensInText(codec tokenizer.Codec, text []byte) (int, error) {
+	ids, _, err := codec.Encode(string(text))
 	if err != nil {
 		return 0, err
 	}
-	return CountTokensInText(content)
-}
-
-func CountTokensInText(text []byte) (int, error) {
-	tokens := tke.Encode(string(text), nil, nil)
-	return len(tokens), nil
+	return len(ids), nil
 }
 
 func printCountsAndTokens(extCounts map[string]int, extTokens map[string]int) {
@@ -130,8 +116,6 @@ func printCountsAndTokens(extCounts map[string]int, extTokens map[string]int) {
 	t.Render()
 }
 
-// extensionOrBase returns the extension of a file path if it exists, otherwise
-// it returns the base name of the file path.
 func extensionOrBase(filePath string) string {
 	ext := strings.ToLower(filepath.Ext(filePath))
 	if ext != "" {

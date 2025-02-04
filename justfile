@@ -6,6 +6,9 @@ fmt:
   go fmt .
   golines . -w
 
+lint:
+  golangci-lint run
+
 update:
   go get -u
   go mod tidy -v
@@ -22,3 +25,8 @@ run: build
 
 stats: build
   ./lmcat --stats
+
+demo:
+  go build -ldflags "-s -w"
+  ./lmcat --gcw
+  hyperfine './lmcat --gcw'

@@ -26,3 +26,4 @@ go.work.sum
 
 # Executable
 lmcat*
+.aider*
