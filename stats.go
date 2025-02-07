@@ -12,7 +12,6 @@ import (
 	"strings"
 
 	"github.com/jedib0t/go-pretty/v6/table"
-	"github.com/tiktoken-go/tokenizer"
 )
 
 type StatsFileResult struct {
@@ -51,16 +50,6 @@ func processFiles(
 	resultQueue chan *StatsFileResult,
 	countTokens TokenFunc) {
 
-	//var regexFilepath *regexp.Regexp
-	//if r := command.String("regex-filepath"); r != "" {
-	//	regexFilepath = regexp.MustCompile(r)
-	//}
-
-	//var regexContent *regexp.Regexp
-	//if r := command.String("regex-content"); r != "" {
-	//	regexContent = regexp.MustCompile(r)
-	//}
-
 	wg := sync.WaitGroup{}
 	for f := range fileQueue {
 
@@ -92,12 +81,15 @@ func processFiles(
 	close(resultQueue)
 }
 
-func CountTokensInText(codec tokenizer.Codec, text []byte) (int, error) {
-	ids, _, err := codec.Encode(string(text))
-	if err != nil {
-		return 0, err
-	}
-	return len(ids), nil
+// TODO 21: fill in this function so that it processes files sequentially.
+//
+//	This is different from the function above, which does thing in parallel
+func processFilesSequential(
+	command *HiArgs,
+	fileQueue chan *gocodewalker.File,
+	resultQueue chan *StatsFileResult,
+	countTokens TokenFunc) {
+
 }
 
 func printCountsAndTokens(extCounts map[string]int, extTokens map[string]int) {
