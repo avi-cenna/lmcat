@@ -81,14 +81,37 @@ func processFiles(
 	close(resultQueue)
 }
 
-// TODO 21: fill in this function so that it processes files sequentially.
-//
-//	This is different from the function above, which does thing in parallel
 func processFilesSequential(
 	command *HiArgs,
 	fileQueue chan *gocodewalker.File,
 	resultQueue chan *StatsFileResult,
 	countTokens TokenFunc) {
+
+	for f := range fileQueue {
+		log.Debug().Str("file", f.Location).Msg("Processing file")
+		
+		if !IsLikelyTextFile(f.Location) {
+			continue
+		}
+		if command.regexFilepath != nil && !command.regexFilepath.MatchString(f.Location) {
+			continue
+		}
+		
+		fileBytes, err := os.ReadFile(f.Location)
+		if err != nil {
+			log.Err(err).Str("file", f.Location).Msg("Error reading file")
+			continue
+		}
+		
+		if command.regexContent != nil && !command.regexContent.Match(fileBytes) {
+			continue
+		}
+		
+		tokenCount := countTokens(fileBytes)
+		log.Debug().Str("file", f.Location).Int("tokenCount", tokenCount).Msg("Counted tokens")
+		resultQueue <- &StatsFileResult{Location: f.Location, TokenCount: tokenCount}
+	}
+	close(resultQueue)
 
 }
 
