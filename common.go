@@ -2,11 +2,12 @@ package main
 
 import (
 	"fmt"
-	"github.com/urfave/cli/v3"
 	"os"
 	"regexp"
 	"strings"
 	"time"
+
+	"github.com/urfave/cli/v3"
 
 	"github.com/boyter/gocodewalker"
 	"github.com/rs/zerolog"
@@ -19,6 +20,7 @@ type HiArgs struct {
 	regexFilepath *regexp.Regexp
 	approx        bool
 	debug         bool
+	sequential    bool
 }
 
 func init() {
@@ -32,13 +34,18 @@ func WalkFiles(bufSize int) chan *gocodewalker.File {
 
 	// restrict to only process files that have the .go extension
 	//fileWalker.AllowListExtensions = append(fileWalker.AllowListExtensions, "go")
-	fileWalker.ExcludeListExtensions = append(fileWalker.ExcludeListExtensions, "mod", "sum")
-	//fileWalker.ExcludeFilenameRegex = append(fileWalker.ExcludeFilenameRegex, regexp.MustCompile("LICENSE"))
-	fileWalker.ExcludeFilename = append(fileWalker.ExcludeFilename, "LICENSE")
+	fileWalker.ExcludeListExtensions = append(
+		fileWalker.ExcludeListExtensions,
+		"mod",
+		"sum",
+		"lock",
+		"bsp",
+	)
+	fileWalker.ExcludeFilename = append(fileWalker.ExcludeFilename, "LICENSE", "package-lock.json")
 
 	// handle the errors by printing them out and then ignore
 	errorHandler := func(e error) bool {
-		fmt.Println("ERR", e.Error())
+		log.Err(e).Msg("Error walking files")
 		return true
 	}
 	fileWalker.SetErrorHandler(errorHandler)
@@ -46,27 +53,18 @@ func WalkFiles(bufSize int) chan *gocodewalker.File {
 	go func() {
 		err := fileWalker.Start()
 		if err != nil {
-			fmt.Println("ERR", err.Error())
+			log.Err(err).Msg("Error starting file walker")
 		}
 	}()
 
 	return fileListQueue
 }
 
-// func readFile(filePath string) []byte {
-// 	content, err := os.ReadFile(filePath)
-// 	if err != nil {
-// 		log.Err(err).Str("file", filePath).Msg("Error reading file")
-// 		return []byte{}
-// 	}
-// 	return content
-// }
-//
-
 func ConvertToHiArgs(command *cli.Command) *HiArgs {
 	hiArgs := &HiArgs{
-		approx: command.Bool("approx"),
-		debug:  command.Bool("debug"),
+		approx:     command.Bool("approx"),
+		debug:      command.Bool("debug"),
+		sequential: command.Bool("sequential"),
 	}
 	if r := command.String("regex-content"); r != "" {
 		hiArgs.regexContent = regexp.MustCompile(r)
@@ -90,17 +88,3 @@ func eprintln(a ...interface{}) {
 		log.Err(err).Msg("Error writing to stderr")
 	}
 }
-
-//func _dummyLog() {
-//	zerolog.TimeFieldFormat = zerolog.TimeFormatUnix
-//	log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr, TimeFormat: time.Kitchen})
-//
-//	log.Debug().
-//		Str("Scale", "833 cents").
-//		Float64("Interval", 833.09).
-//		Msg("Fibonacci is everywhere")
-//
-//	log.Debug().
-//		Str("Name", "Tom").
-//		Send()
-//}

@@ -39,7 +39,11 @@ func RunStats(command *HiArgs) error {
 		close(done)
 	}()
 
-	processFiles(command, fileQueue, resultQueue, countTokens)
+	if command.sequential {
+		processFilesSequential(command, fileQueue, resultQueue, countTokens)
+	} else {
+		processFiles(command, fileQueue, resultQueue, countTokens)
+	}
 	<-done
 	return nil
 }
@@ -89,24 +93,24 @@ func processFilesSequential(
 
 	for f := range fileQueue {
 		log.Debug().Str("file", f.Location).Msg("Processing file")
-		
+
 		if !IsLikelyTextFile(f.Location) {
 			continue
 		}
 		if command.regexFilepath != nil && !command.regexFilepath.MatchString(f.Location) {
 			continue
 		}
-		
+
 		fileBytes, err := os.ReadFile(f.Location)
 		if err != nil {
 			log.Err(err).Str("file", f.Location).Msg("Error reading file")
 			continue
 		}
-		
+
 		if command.regexContent != nil && !command.regexContent.Match(fileBytes) {
 			continue
 		}
-		
+
 		tokenCount := countTokens(fileBytes)
 		log.Debug().Str("file", f.Location).Int("tokenCount", tokenCount).Msg("Counted tokens")
 		resultQueue <- &StatsFileResult{Location: f.Location, TokenCount: tokenCount}

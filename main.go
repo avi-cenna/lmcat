@@ -40,6 +40,23 @@ func main() {
 				Usage:    "Use approximate token count",
 			},
 			&cli.BoolFlag{
+				Name:     "sequential",
+				Aliases:  []string{"seq"},
+				Required: false,
+				Usage:    "Force sequential processing",
+			},
+			//TODO (for AI):  implement this flag:
+			//   - if there is piped data, count the lines and tokens
+			//   - if there is no piped data, then get the first positional argument, and
+			//     if it's a file, count tokens in the file, if it's a directory, count tokens in the directory,
+			//     if it's a string, count tokens and lines in the string
+			&cli.BoolFlag{
+				Name:     "count",
+				Aliases:  []string{"count"},
+				Required: false,
+				Usage:    "TODO",
+			},
+			&cli.BoolFlag{
 				Name:     "debug",
 				Aliases:  []string{"d", "verbose", "v"},
 				Required: false,
@@ -52,10 +69,6 @@ func main() {
 	if err := app.Run(context.Background(), os.Args); err != nil {
 		log.Fatal().Err(err).Msg("Error running app")
 	}
-
-	// if err := app.Run(os.Args); err != nil {
-	// log.Fatal(err)
-	// }
 }
 
 func run(ctx context.Context, cliCtx *cli.Command) error {
