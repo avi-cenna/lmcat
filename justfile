@@ -30,3 +30,6 @@ demo:
   go build -ldflags "-s -w"
   ./lmcat --gcw
   hyperfine './lmcat --gcw'
+
+demo-count: build
+  cat ./common.go | ./lmcat --count

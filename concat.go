@@ -17,10 +17,8 @@ type ConcatFileResult struct {
 	TokenCount int
 }
 
-func RunConcat(command *cli.Command) error {
-	countTokens := GetTokenFunc(command.Bool("approx"))
-	fileQueue := WalkFiles(100)
-	resultQueue := make(chan *ConcatFileResult, 100)
+// ProcessResults handles displaying file content and statistics from the result channel
+func ProcessResults(resultQueue chan *ConcatFileResult) chan struct{} {
 	done := make(chan struct{})
 
 	go func() {
@@ -42,6 +40,16 @@ func RunConcat(command *cli.Command) error {
 		close(done)
 	}()
 
+	return done
+}
+
+func RunConcat(command *cli.Command) error {
+	countTokens := GetTokenFunc(command.Bool("approx"))
+	fileQueue := WalkFiles(100)
+	resultQueue := make(chan *ConcatFileResult, 100)
+
+	done := ProcessResults(resultQueue)
+
 	processFilesConcat(fileQueue, resultQueue, countTokens)
 	<-done
 	return nil
@@ -54,54 +62,81 @@ func processFilesConcat(
 
 	wg := sync.WaitGroup{}
 	for f := range fileQueue {
-
 		wg.Add(1)
-		go func(f *gocodewalker.File) {
-			log.Debug().Str("file", f.Location).Msg("Processing file")
-			defer wg.Done()
-			if !IsLikelyTextFile(f.Location) {
-				return
-			}
-			fileBytes, err := os.ReadFile(f.Location)
-			if err != nil {
-				log.Err(err).Str("file", f.Location).Msg("Error reading file")
-				return
-			}
-			tokenCount := countTokens(fileBytes)
-			log.Debug().Str("file", f.Location).Int("tokenCount", tokenCount).Msg("Counted tokens")
-			resultQueue <- &ConcatFileResult{
-				Location:   f.Location,
-				Content:    fileBytes,
-				TokenCount: tokenCount}
-		}(f)
+		go processFileWorker(&wg, f.Location, resultQueue, countTokens)
 	}
 
 	wg.Wait()
 	close(resultQueue)
 }
 
-func processFilesConcatSequential(
-	fileQueue chan *gocodewalker.File,
+func processFileListConcat(
+	fileList []string,
 	resultQueue chan *ConcatFileResult,
 	countTokens TokenFunc) {
 
-	for f := range fileQueue {
-		log.Debug().Str("file", f.Location).Msg("Processing file")
-		if !IsLikelyTextFile(f.Location) {
-			return
-		}
-		fileBytes, err := os.ReadFile(f.Location)
-		if err != nil {
-			log.Err(err).Str("file", f.Location).Msg("Error reading file")
-			return
-		}
-		tokenCount := countTokens(fileBytes)
-		log.Debug().Str("file", f.Location).Int("tokenCount", tokenCount).Msg("Counted tokens")
-		resultQueue <- &ConcatFileResult{
-			Location:   f.Location,
-			Content:    fileBytes,
-			TokenCount: tokenCount}
+	wg := sync.WaitGroup{}
+	for _, f := range fileList {
+		wg.Add(1)
+		go processFileWorker(&wg, f, resultQueue, countTokens)
 	}
 
+	wg.Wait()
 	close(resultQueue)
 }
+
+// processFileWorker handles the processing of a single file
+func processFileWorker(
+	wg *sync.WaitGroup,
+	filepath string,
+	resultQueue chan *ConcatFileResult,
+	countTokens TokenFunc) {
+
+	defer wg.Done()
+	log.Debug().Str("file", filepath).Msg("Processing file")
+
+	if !IsLikelyTextFile(filepath) {
+		return
+	}
+
+	fileBytes, err := os.ReadFile(filepath)
+	if err != nil {
+		log.Err(err).Str("file", filepath).Msg("Error reading file")
+		return
+	}
+
+	tokenCount := countTokens(fileBytes)
+	log.Debug().Str("file", filepath).Int("tokenCount", tokenCount).Msg("Counted tokens")
+
+	resultQueue <- &ConcatFileResult{
+		Location:   filepath,
+		Content:    fileBytes,
+		TokenCount: tokenCount,
+	}
+}
+
+// func processFilesConcatSequential(
+// 	fileQueue chan *gocodewalker.File,
+// 	resultQueue chan *ConcatFileResult,
+// 	countTokens TokenFunc) {
+
+// 	for f := range fileQueue {
+// 		log.Debug().Str("file", f.Location).Msg("Processing file")
+// 		if !IsLikelyTextFile(f.Location) {
+// 			return
+// 		}
+// 		fileBytes, err := os.ReadFile(f.Location)
+// 		if err != nil {
+// 			log.Err(err).Str("file", f.Location).Msg("Error reading file")
+// 			return
+// 		}
+// 		tokenCount := countTokens(fileBytes)
+// 		log.Debug().Str("file", f.Location).Int("tokenCount", tokenCount).Msg("Counted tokens")
+// 		resultQueue <- &ConcatFileResult{
+// 			Location:   f.Location,
+// 			Content:    fileBytes,
+// 			TokenCount: tokenCount}
+// 	}
+
+// 	close(resultQueue)
+// }

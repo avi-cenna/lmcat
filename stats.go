@@ -64,17 +64,17 @@ func processFiles(
 			if !IsLikelyTextFile(f.Location) {
 				return
 			}
-			if command.regexFilepath != nil && !command.regexFilepath.MatchString(f.Location) {
-				return
-			}
+			//if command.regexFilepath != nil && !command.regexFilepath.MatchString(f.Location) {
+			//	return
+			//}
 			fileBytes, err := os.ReadFile(f.Location)
 			if err != nil {
 				log.Err(err).Str("file", f.Location).Msg("Error reading file")
 				return
 			}
-			if command.regexContent != nil && !command.regexContent.Match(fileBytes) {
-				return
-			}
+			//if command.regexContent != nil && !command.regexContent.Match(fileBytes) {
+			//	return
+			//}
 			tokenCount := countTokens(fileBytes)
 			log.Debug().Str("file", f.Location).Int("tokenCount", tokenCount).Msg("Counted tokens")
 			resultQueue <- &StatsFileResult{Location: f.Location, TokenCount: tokenCount}
@@ -97,17 +97,10 @@ func processFilesSequential(
 		if !IsLikelyTextFile(f.Location) {
 			continue
 		}
-		if command.regexFilepath != nil && !command.regexFilepath.MatchString(f.Location) {
-			continue
-		}
 
 		fileBytes, err := os.ReadFile(f.Location)
 		if err != nil {
 			log.Err(err).Str("file", f.Location).Msg("Error reading file")
-			continue
-		}
-
-		if command.regexContent != nil && !command.regexContent.Match(fileBytes) {
 			continue
 		}
 

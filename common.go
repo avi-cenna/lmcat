@@ -3,7 +3,6 @@ package main
 import (
 	"fmt"
 	"os"
-	"regexp"
 	"strings"
 	"time"
 
@@ -16,11 +15,12 @@ import (
 
 // High-level args
 type HiArgs struct {
-	regexContent  *regexp.Regexp
-	regexFilepath *regexp.Regexp
-	approx        bool
-	debug         bool
-	sequential    bool
+	//regexContent  *regexp.Regexp
+	//regexFilepath *regexp.Regexp
+	approx     bool
+	count      bool
+	debug      bool
+	sequential bool
 }
 
 func init() {
@@ -63,14 +63,15 @@ func WalkFiles(bufSize int) chan *gocodewalker.File {
 func ConvertToHiArgs(command *cli.Command) *HiArgs {
 	hiArgs := &HiArgs{
 		approx:     command.Bool("approx"),
+		count:      command.Bool("count"),
 		debug:      command.Bool("debug"),
 		sequential: command.Bool("sequential"),
 	}
 	if r := command.String("regex-content"); r != "" {
-		hiArgs.regexContent = regexp.MustCompile(r)
+		//hiArgs.regexContent = regexp.MustCompile(r)
 	}
 	if r := command.String("regex-filepath"); r != "" {
-		hiArgs.regexFilepath = regexp.MustCompile(r)
+		//hiArgs.regexFilepath = regexp.MustCompile(r)
 	}
 	return hiArgs
 }
