@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -21,14 +22,16 @@ type HiArgs struct {
 	count      bool
 	debug      bool
 	sequential bool
+	stats      bool
 }
 
 func init() {
 	log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr, TimeFormat: time.Kitchen})
 }
 
-func WalkFiles(bufSize int) chan *gocodewalker.File {
+func WalkFiles(bufSize int) chan string {
 	fileListQueue := make(chan *gocodewalker.File, bufSize)
+	filePathQueue := make(chan string, bufSize)
 
 	fileWalker := gocodewalker.NewFileWalker(".", fileListQueue)
 
@@ -57,7 +60,14 @@ func WalkFiles(bufSize int) chan *gocodewalker.File {
 		}
 	}()
 
-	return fileListQueue
+	go func() {
+		defer close(filePathQueue)
+		for file := range fileListQueue {
+			filePathQueue <- file.Location
+		}
+	}()
+
+	return filePathQueue
 }
 
 func ConvertToHiArgs(command *cli.Command) *HiArgs {
@@ -66,12 +76,7 @@ func ConvertToHiArgs(command *cli.Command) *HiArgs {
 		count:      command.Bool("count"),
 		debug:      command.Bool("debug"),
 		sequential: command.Bool("sequential"),
-	}
-	if r := command.String("regex-content"); r != "" {
-		//hiArgs.regexContent = regexp.MustCompile(r)
-	}
-	if r := command.String("regex-filepath"); r != "" {
-		//hiArgs.regexFilepath = regexp.MustCompile(r)
+		stats:      command.Bool("stats"),
 	}
 	return hiArgs
 }
@@ -88,4 +93,12 @@ func eprintln(a ...interface{}) {
 	if _, err := fmt.Fprintln(os.Stderr, a...); err != nil {
 		log.Err(err).Msg("Error writing to stderr")
 	}
+}
+
+func extensionOrBase(filePath string) string {
+	ext := strings.ToLower(filepath.Ext(filePath))
+	if ext != "" {
+		return ext
+	}
+	return filepath.Base(filePath)
 }

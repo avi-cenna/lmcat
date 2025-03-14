@@ -16,6 +16,31 @@ func RunPipe(data []byte, hiArgs *HiArgs) error {
 		return nil
 	}
 
+	// Extract file paths from input data
+	filePaths := extractFilePaths(data)
+
+	if len(filePaths) == 0 {
+		return fmt.Errorf("no valid file paths found in input")
+	}
+
+	var done chan struct{}
+	if hiArgs.stats {
+		resultQueue := make(chan *StatsFileResult, 100)
+		done = processStatsResults(resultQueue)
+		processFileListForStats(filePaths, resultQueue, countTokens)
+		<-done
+	} else {
+		resultQueue := make(chan *ConcatFileResult, 100)
+		done = ProcessConcatResults(resultQueue)
+		processFileListConcat(filePaths, resultQueue, countTokens)
+		<-done
+	}
+
+	return nil
+}
+
+// extractFilePaths returns a list of file paths from the input data
+func extractFilePaths(data []byte) []string {
 	// Split the data into lines
 	lines := strings.Split(strings.TrimSpace(string(data)), "\n")
 
@@ -28,21 +53,7 @@ func RunPipe(data []byte, hiArgs *HiArgs) error {
 		}
 	}
 
-	if len(filePaths) == 0 {
-		return fmt.Errorf("no valid file paths found in input")
-	}
-
-	// Create a channel for results
-	resultQueue := make(chan *ConcatFileResult, 100)
-
-	// Use the shared ProcessResults function
-	done := ProcessResults(resultQueue)
-
-	// Process each line as a filepath using the function from concat.go
-	processFileListConcat(filePaths, resultQueue, countTokens)
-	<-done
-
-	return nil
+	return filePaths
 }
 
 //// runCountString counts tokens and lines in a string

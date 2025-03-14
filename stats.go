@@ -3,13 +3,10 @@ package main
 import (
 	"sync"
 
-	"github.com/boyter/gocodewalker"
 	"github.com/rs/zerolog/log"
 
 	"os"
-	"path/filepath"
 	"slices"
-	"strings"
 
 	"github.com/jedib0t/go-pretty/v6/table"
 )
@@ -25,6 +22,19 @@ func RunStats(command *HiArgs) error {
 	countTokens := GetTokenFunc(command.approx)
 	fileQueue := WalkFiles(100)
 	resultQueue := make(chan *StatsFileResult, 100)
+	done := processStatsResults(resultQueue)
+
+	if command.sequential {
+		processFilesSequential(command, fileQueue, resultQueue, countTokens)
+	} else {
+		processFileQueueForStats(fileQueue, resultQueue, countTokens)
+	}
+	<-done
+	return nil
+}
+
+// processStatsResults handles processing and displaying statistics from the result channel
+func processStatsResults(resultQueue chan *StatsFileResult) chan struct{} {
 	done := make(chan struct{})
 
 	go func() {
@@ -39,46 +49,33 @@ func RunStats(command *HiArgs) error {
 		close(done)
 	}()
 
-	if command.sequential {
-		processFilesSequential(command, fileQueue, resultQueue, countTokens)
-	} else {
-		processFiles(command, fileQueue, resultQueue, countTokens)
-	}
-	<-done
-	return nil
+	return done
 }
 
-func processFiles(
-	command *HiArgs,
-	fileQueue chan *gocodewalker.File,
+func processFileQueueForStats(
+	fileQueue chan string,
 	resultQueue chan *StatsFileResult,
 	countTokens TokenFunc) {
 
 	wg := sync.WaitGroup{}
-	for f := range fileQueue {
-
+	for filepath := range fileQueue {
 		wg.Add(1)
-		go func(f *gocodewalker.File) {
-			log.Debug().Str("file", f.Location).Msg("Processing file")
-			defer wg.Done()
-			if !IsLikelyTextFile(f.Location) {
-				return
-			}
-			//if command.regexFilepath != nil && !command.regexFilepath.MatchString(f.Location) {
-			//	return
-			//}
-			fileBytes, err := os.ReadFile(f.Location)
-			if err != nil {
-				log.Err(err).Str("file", f.Location).Msg("Error reading file")
-				return
-			}
-			//if command.regexContent != nil && !command.regexContent.Match(fileBytes) {
-			//	return
-			//}
-			tokenCount := countTokens(fileBytes)
-			log.Debug().Str("file", f.Location).Int("tokenCount", tokenCount).Msg("Counted tokens")
-			resultQueue <- &StatsFileResult{Location: f.Location, TokenCount: tokenCount}
-		}(f)
+		go processStatsFileWorker(&wg, filepath, resultQueue, countTokens)
+	}
+
+	wg.Wait()
+	close(resultQueue)
+}
+
+func processFileListForStats(
+	fileList []string,
+	resultQueue chan *StatsFileResult,
+	countTokens TokenFunc) {
+
+	wg := sync.WaitGroup{}
+	for _, filepath := range fileList {
+		wg.Add(1)
+		go processStatsFileWorker(&wg, filepath, resultQueue, countTokens)
 	}
 
 	wg.Wait()
@@ -87,29 +84,54 @@ func processFiles(
 
 func processFilesSequential(
 	command *HiArgs,
-	fileQueue chan *gocodewalker.File,
+	fileQueue chan string,
 	resultQueue chan *StatsFileResult,
 	countTokens TokenFunc) {
 
-	for f := range fileQueue {
-		log.Debug().Str("file", f.Location).Msg("Processing file")
+	for filepath := range fileQueue {
+		log.Debug().Str("file", filepath).Msg("Processing file")
 
-		if !IsLikelyTextFile(f.Location) {
+		if !IsLikelyTextFile(filepath) {
 			continue
 		}
 
-		fileBytes, err := os.ReadFile(f.Location)
+		fileBytes, err := os.ReadFile(filepath)
 		if err != nil {
-			log.Err(err).Str("file", f.Location).Msg("Error reading file")
+			log.Err(err).Str("file", filepath).Msg("Error reading file")
 			continue
 		}
 
 		tokenCount := countTokens(fileBytes)
-		log.Debug().Str("file", f.Location).Int("tokenCount", tokenCount).Msg("Counted tokens")
-		resultQueue <- &StatsFileResult{Location: f.Location, TokenCount: tokenCount}
+		log.Debug().Str("file", filepath).Int("tokenCount", tokenCount).Msg("Counted tokens")
+		resultQueue <- &StatsFileResult{Location: filepath, TokenCount: tokenCount}
 	}
 	close(resultQueue)
+}
 
+// processStatsFileWorker handles the processing of a single file for stats
+// collection
+func processStatsFileWorker(
+	wg *sync.WaitGroup,
+	filepath string,
+	resultQueue chan *StatsFileResult,
+	countTokens TokenFunc) {
+
+	defer wg.Done()
+	log.Debug().Str("file", filepath).Msg("Processing file")
+
+	if !IsLikelyTextFile(filepath) {
+		return
+	}
+
+	fileBytes, err := os.ReadFile(filepath)
+	if err != nil {
+		log.Err(err).Str("file", filepath).Msg("Error reading file")
+		return
+	}
+
+	tokenCount := countTokens(fileBytes)
+	log.Debug().Str("file", filepath).Int("tokenCount", tokenCount).Msg("Counted tokens")
+	resultQueue <- &StatsFileResult{Location: filepath, TokenCount: tokenCount}
 }
 
 func printCountsAndTokens(extCounts map[string]int, extTokens map[string]int) {
@@ -126,12 +148,4 @@ func printCountsAndTokens(extCounts map[string]int, extTokens map[string]int) {
 		t.AppendRow(table.Row{ext, extCounts[ext], extTokens[ext]})
 	}
 	t.Render()
-}
-
-func extensionOrBase(filePath string) string {
-	ext := strings.ToLower(filepath.Ext(filePath))
-	if ext != "" {
-		return ext
-	}
-	return filepath.Base(filePath)
 }
