@@ -3,7 +3,6 @@ package main
 import (
 	"fmt"
 	"os"
-	"regexp"
 	"strings"
 	"time"
 
@@ -14,21 +13,40 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
-// High-level args
-type HiArgs struct {
-	regexContent  *regexp.Regexp
-	regexFilepath *regexp.Regexp
-	approx        bool
-	debug         bool
-	sequential    bool
+const bufSize = 100
+
+type LmcatArgs struct {
+	approx bool
+	count  bool
+	debug  bool
+	stats  bool
 }
 
 func init() {
 	log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr, TimeFormat: time.Kitchen})
 }
 
-func WalkFiles(bufSize int) chan *gocodewalker.File {
+func ConvertPipeDataToChannel(pipeData string, bufSize int) chan string {
+	fileQueue := make(chan string, bufSize)
+	go func() {
+		defer close(fileQueue)
+		lines := strings.Split(pipeData, "\n")
+		for _, line := range lines {
+			trimmedLine := strings.TrimSpace(line)
+			if trimmedLine != "" {
+				fileQueue <- trimmedLine
+			}
+		}
+	}()
+	return fileQueue
+}
+
+// WalkFiles returns a channel of file paths by walking the current directory
+func WalkFiles(bufSize int) chan string {
+	// Original channel for gocodewalker.File objects
 	fileListQueue := make(chan *gocodewalker.File, bufSize)
+	// New channel for file paths
+	filePaths := make(chan string, bufSize)
 
 	fileWalker := gocodewalker.NewFileWalker(".", fileListQueue)
 
@@ -57,20 +75,23 @@ func WalkFiles(bufSize int) chan *gocodewalker.File {
 		}
 	}()
 
-	return fileListQueue
+	// Transform File objects to file paths
+	go func() {
+		defer close(filePaths)
+		for file := range fileListQueue {
+			filePaths <- file.Location
+		}
+	}()
+
+	return filePaths
 }
 
-func ConvertToHiArgs(command *cli.Command) *HiArgs {
-	hiArgs := &HiArgs{
-		approx:     command.Bool("approx"),
-		debug:      command.Bool("debug"),
-		sequential: command.Bool("sequential"),
-	}
-	if r := command.String("regex-content"); r != "" {
-		hiArgs.regexContent = regexp.MustCompile(r)
-	}
-	if r := command.String("regex-filepath"); r != "" {
-		hiArgs.regexFilepath = regexp.MustCompile(r)
+func ParseArgs(command *cli.Command) *LmcatArgs {
+	hiArgs := &LmcatArgs{
+		approx: command.Bool("approx"),
+		count:  command.Bool("count"),
+		debug:  command.Bool("debug"),
+		stats:  command.Bool("stats"),
 	}
 	return hiArgs
 }
@@ -83,7 +104,13 @@ func countLines(text string) int {
 	return n
 }
 
-func eprintln(a ...interface{}) {
+//func println(a ...interface{}) {
+//	if _, err := fmt.Println(a...); err != nil {
+//		log.Err(err).Msg("Error writing to stderr")
+//	}
+//}
+
+func errprintln(a ...interface{}) {
 	if _, err := fmt.Fprintln(os.Stderr, a...); err != nil {
 		log.Err(err).Msg("Error writing to stderr")
 	}
