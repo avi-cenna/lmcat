@@ -1,10 +1,11 @@
 #!/usr/bin/env just --justfile
 
 set windows-shell := ["nu", "-c"]
+set ignore-comments := true
 
 fmt:
   go fmt .
-  golines . -w
+#  golines . -w
 
 lint:
   golangci-lint run
