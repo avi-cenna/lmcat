@@ -31,7 +31,7 @@ func RunConcat(command *cli.Command, pipeData string) error {
 	resultQueue := make(chan *ConcatFileResult, bufSize)
 	done := make(chan struct{})
 
-	// Start a goroutine to ...
+	// Start a goroutine to process the result queue
 	go func() {
 		log.Debug().Msg("RunConcat: Result processing goroutine started")
 		totalTokens := 0
