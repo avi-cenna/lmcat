@@ -3,7 +3,6 @@ package main
 import (
 	"fmt"
 	"os"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -14,24 +13,41 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
-// High-level args
-type HiArgs struct {
-	//regexContent  *regexp.Regexp
-	//regexFilepath *regexp.Regexp
-	approx     bool
-	count      bool
-	debug      bool
-	sequential bool
-	stats      bool
+const bufSize = 100
+
+type LmcatArgs struct {
+	approx bool
+	count  bool
+	debug  bool
+	stats  bool
 }
 
 func init() {
 	log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr, TimeFormat: time.Kitchen})
 }
 
+func ConvertPipeDataToChannel(pipeData string, bufSize int) chan string {
+	fileQueue := make(chan string, bufSize)
+	go func() {
+		defer close(fileQueue)
+		lines := strings.Split(pipeData, "\n")
+		for _, line := range lines {
+			trimmedLine := strings.TrimSpace(line)
+			if trimmedLine != "" {
+				fileQueue <- trimmedLine
+			}
+		}
+	}()
+	return fileQueue
+}
+
+// WalkFiles returns a channel of file paths by walking the current directory
 func WalkFiles(bufSize int) chan string {
+	log.Debug().Msg("WalkFiles: Starting file walking")
+	// Original channel for gocodewalker.File objects
 	fileListQueue := make(chan *gocodewalker.File, bufSize)
-	filePathQueue := make(chan string, bufSize)
+	// New channel for file paths
+	filePaths := make(chan string, bufSize)
 
 	fileWalker := gocodewalker.NewFileWalker(".", fileListQueue)
 
@@ -54,29 +70,40 @@ func WalkFiles(bufSize int) chan string {
 	fileWalker.SetErrorHandler(errorHandler)
 
 	go func() {
+		log.Debug().Msg("WalkFiles: File walker goroutine started")
 		err := fileWalker.Start()
 		if err != nil {
 			log.Err(err).Msg("Error starting file walker")
 		}
+		log.Debug().Msg("WalkFiles: File walker goroutine finished")
 	}()
 
+	// Transform File objects to file paths
 	go func() {
-		defer close(filePathQueue)
+		log.Debug().Msg("WalkFiles: Transformation goroutine started")
+		defer close(filePaths)
+		fileCount := 0
 		for file := range fileListQueue {
-			filePathQueue <- file.Location
+			fileCount++
+			log.Debug().
+				Str("file", file.Location).
+				Int("count", fileCount).
+				Msg("WalkFiles: Processing file")
+			filePaths <- file.Location
 		}
+		log.Debug().Msg("WalkFiles: fileListQueue closed, closing filePaths channel")
+		log.Debug().Int("totalFiles", fileCount).Msg("WalkFiles: Transformation goroutine finished")
 	}()
 
-	return filePathQueue
+	return filePaths
 }
 
-func ConvertToHiArgs(command *cli.Command) *HiArgs {
-	hiArgs := &HiArgs{
-		approx:     command.Bool("approx"),
-		count:      command.Bool("count"),
-		debug:      command.Bool("debug"),
-		sequential: command.Bool("sequential"),
-		stats:      command.Bool("stats"),
+func ParseArgs(command *cli.Command) *LmcatArgs {
+	hiArgs := &LmcatArgs{
+		approx: command.Bool("approx"),
+		count:  command.Bool("count"),
+		debug:  command.Bool("debug"),
+		stats:  command.Bool("stats"),
 	}
 	return hiArgs
 }
@@ -89,7 +116,13 @@ func countLines(text string) int {
 	return n
 }
 
-func eprintln(a ...interface{}) {
+//func println(a ...interface{}) {
+//	if _, err := fmt.Println(a...); err != nil {
+//		log.Err(err).Msg("Error writing to stderr")
+//	}
+//}
+
+func errprintln(a ...interface{}) {
 	if _, err := fmt.Fprintln(os.Stderr, a...); err != nil {
 		log.Err(err).Msg("Error writing to stderr")
 	}

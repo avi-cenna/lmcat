@@ -2,11 +2,12 @@ package main
 
 import (
 	"context"
+	"io"
+	"os"
+
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"github.com/urfave/cli/v3"
-	"io"
-	"os"
 )
 
 func main() {
@@ -14,17 +15,6 @@ func main() {
 		Name:  "lmcat",
 		Usage: "Process and concatenate files",
 		Flags: []cli.Flag{
-			&cli.StringFlag{
-				Name:     "regex-content",
-				Required: false,
-				Usage:    "Regex pattern for ripgrep",
-			},
-			&cli.StringFlag{
-				Name:     "regex-filepath",
-				Required: false,
-				Aliases:  []string{"r"},
-				Usage:    "Regex pattern for ripgrep",
-			},
 			&cli.BoolFlag{
 				Name:     "stats",
 				Required: false,
@@ -36,15 +26,14 @@ func main() {
 				Required: false,
 				Usage:    "Use approximate token count",
 			},
+			//TODO (for AI):  implement this flag:
+			//   - if there is piped data, count the lines and tokens
+			//   - if there is no piped data, then get the first positional argument, and
+			//     if it's a file, count tokens in the file, if it's a directory, count tokens in the directory,
+			//     if it's a string, count tokens and lines in the string
 			&cli.BoolFlag{
-				Name:     "sequential",
-				Aliases:  []string{"seq"},
-				Required: false,
-				Usage:    "Force sequential processing",
-			},
-			&cli.BoolFlag{
-				Name:     "count",
-				Aliases:  []string{"c"},
+				Name: "count",
+				//Aliases:  []string{"count"},
 				Required: false,
 				Usage:    "Count lines and tokens in input (piped data, file, directory, or string)",
 			},
@@ -65,7 +54,7 @@ func main() {
 
 func run(ctx context.Context, cliCtx *cli.Command) error {
 	var globalLevel zerolog.Level
-	hiArgs := ConvertToHiArgs(cliCtx)
+	hiArgs := ParseArgs(cliCtx)
 	if hiArgs.debug {
 		globalLevel = zerolog.DebugLevel
 	} else {
@@ -74,21 +63,34 @@ func run(ctx context.Context, cliCtx *cli.Command) error {
 	zerolog.SetGlobalLevel(globalLevel)
 
 	// Check if there's data being piped in
+	pipedData, err := getPipedData()
+	if err != nil {
+		log.Fatal().Err(err).Msg("Error reading piped data")
+	}
+	//if pipedData != "" {
+	//	lineCount := countLines(string(data))
+	//	tokenCount := GetTokenFunc(hiArgs.approx)(data)
+	//	_, err = fmt.Fprintf(os.Stdout, "Lines: %d\nTokens: %d", lineCount, tokenCount)
+	//	return err
+	//}
+
+	if hiArgs.count {
+		return RunCount(cliCtx, hiArgs, pipedData)
+	} else if hiArgs.stats {
+		return RunStats(hiArgs, pipedData)
+	} else {
+		return RunConcat(cliCtx, pipedData)
+	}
+}
+
+func getPipedData() (string, error) {
 	stat, _ := os.Stdin.Stat()
 	if (stat.Mode() & os.ModeCharDevice) == 0 {
 		data, err := io.ReadAll(os.Stdin)
 		if err != nil {
-			return err
+			return "", err
 		}
-		return RunPipe(data, hiArgs)
+		return string(data), nil
 	}
-
-	// Handle different commands based on flags
-	if cliCtx.Bool("count") {
-		return RunCount(cliCtx)
-	} else if cliCtx.Bool("stats") {
-		return RunStats(hiArgs)
-	} else {
-		return RunConcat(cliCtx)
-	}
+	return "", nil
 }
